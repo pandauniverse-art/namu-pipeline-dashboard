@@ -889,6 +889,28 @@
     </div>
   </div>
 </div>
+<!-- 자료(이미지/영상/프롬프트) ↔ 프로젝트 연결 피커: 카드에서 "관리"를 누르면 체크박스로 명확하게 연결/해제 (실수로 클릭해서 바뀌는 일이 없도록) -->
+<div class="modal-backdrop" id="assetProjectPickerBackdrop">
+  <div class="modal" style="max-width:420px;">
+    <h2>연결 프로젝트 — <span id="appAssetName"></span></h2>
+    <div style="font-size:12px; color:var(--text-muted); margin-bottom:10px;">체크한 프로젝트에만 연결됩니다. 전부 해제하면 "전체 공용" 자료로 표시됩니다 — 연결은 선택사항입니다.</div>
+    <div id="appList" style="max-height:50vh; overflow-y:auto; display:flex; flex-direction:column; gap:4px;"></div>
+    <div class="modal-footer">
+      <button class="primary" onclick="closeAssetProjectPicker()">닫기</button>
+    </div>
+  </div>
+</div>
+<!-- 이미지 → 프롬프트 연결 피커: 이미지 카드에서 "관리"를 누르면 체크박스로 명확하게 연결/해제 -->
+<div class="modal-backdrop" id="imagePromptPickerBackdrop">
+  <div class="modal" style="max-width:420px;">
+    <h2>연결된 프롬프트 — <span id="ippImageName"></span></h2>
+    <div style="font-size:12px; color:var(--text-muted); margin-bottom:10px;">이 이미지를 만들 때 참고한 프롬프트가 있다면 체크하세요. 없으면 그대로 두면 됩니다 — 연결은 선택사항입니다.</div>
+    <div id="ippList" style="max-height:50vh; overflow-y:auto; display:flex; flex-direction:column; gap:4px;"></div>
+    <div class="modal-footer">
+      <button class="primary" onclick="closeImagePromptPicker()">닫기</button>
+    </div>
+  </div>
+</div>
 <button class="ai-fab" id="aiFab" onclick="toggleAiPanel()">🤖 AI 입력</button>
 <div class="ai-panel" id="aiPanel">
   <div class="ai-panel-header" id="aiPanelHeader" style="display:flex; align-items:center; justify-content:space-between;">
@@ -2947,6 +2969,81 @@ function togglePromptImageLink_(imageId) {
   renderAssets();
   queueAutoSave();
 }
+// ---------- 자료 ↔ 프로젝트 연결 피커 (체크박스 방식 — 카드 위를 스치듯 클릭해도 절대 바뀌지 않고, "관리" 버튼을 눌러야만 열림) ----------
+let currentPickerAssetId_ = '';
+function openAssetProjectPicker(assetId) {
+  currentPickerAssetId_ = assetId;
+  const a = assets.find(x => x.id === assetId);
+  const nameEl = document.getElementById('appAssetName');
+  if (nameEl) nameEl.textContent = a ? (a.name || '(이름 없음)') : '';
+  renderAssetProjectPicker();
+  document.getElementById('assetProjectPickerBackdrop').classList.add('active');
+}
+function closeAssetProjectPicker() {
+  document.getElementById('assetProjectPickerBackdrop').classList.remove('active');
+  applyPendingRemoteIfAny();
+}
+function renderAssetProjectPicker() {
+  const list = document.getElementById('appList');
+  if (!list) return;
+  const a = assets.find(x => x.id === currentPickerAssetId_);
+  if (!a) { list.innerHTML = ''; return; }
+  list.innerHTML = projects.length ? projects.map(p => {
+    const linked = (a.projects || []).includes(p.id);
+    return `<label style="display:flex; align-items:center; gap:8px; padding:6px 8px; border:1px solid var(--grid); border-radius:6px; cursor:pointer; ${linked ? 'background:var(--surface-2);' : ''}">
+      <input type="checkbox" ${linked ? 'checked' : ''} onchange="toggleAssetProjectLink_('${p.id}')"><span>${p.name}</span>
+    </label>`;
+  }).join('') : '<div class="empty-state">등록된 프로젝트가 없습니다.</div>';
+}
+function toggleAssetProjectLink_(projectId) {
+  const a = assets.find(x => x.id === currentPickerAssetId_);
+  if (!a) return;
+  a.projects = a.projects || [];
+  const idx = a.projects.indexOf(projectId);
+  if (idx >= 0) a.projects.splice(idx, 1); else a.projects.push(projectId);
+  a.updatedAt = Date.now();
+  renderAssetProjectPicker();
+  renderAssets();
+  queueAutoSave();
+}
+// ---------- 이미지 → 프롬프트 연결 피커 (이미지 카드 쪽에서 열 때 — 체크박스 방식, 위와 동일한 이유로 안전하게 분리) ----------
+let currentPickerImageId_ = '';
+function openImagePromptPicker(imageId) {
+  currentPickerImageId_ = imageId;
+  const img = assets.find(x => x.id === imageId);
+  const nameEl = document.getElementById('ippImageName');
+  if (nameEl) nameEl.textContent = img ? (img.name || '(이름 없음)') : '';
+  renderImagePromptPicker();
+  document.getElementById('imagePromptPickerBackdrop').classList.add('active');
+}
+function closeImagePromptPicker() {
+  document.getElementById('imagePromptPickerBackdrop').classList.remove('active');
+  applyPendingRemoteIfAny();
+}
+function renderImagePromptPicker() {
+  const list = document.getElementById('ippList');
+  if (!list) return;
+  const img = assets.find(x => x.id === currentPickerImageId_);
+  if (!img) { list.innerHTML = ''; return; }
+  const prompts = assets.filter(x => x.type === 'prompt');
+  list.innerHTML = prompts.length ? prompts.map(p => {
+    const linked = (img.linkedPrompts || []).includes(p.id);
+    return `<label style="display:flex; align-items:center; gap:8px; padding:6px 8px; border:1px solid var(--grid); border-radius:6px; cursor:pointer; ${linked ? 'background:var(--surface-2);' : ''}">
+      <input type="checkbox" ${linked ? 'checked' : ''} onchange="toggleImagePromptLink_('${p.id}')"><span>${(p.name||'(이름 없음)').replace(/</g,'&lt;')}</span>
+    </label>`;
+  }).join('') : '<div class="empty-state">등록된 프롬프트가 없습니다.</div>';
+}
+function toggleImagePromptLink_(promptId) {
+  const img = assets.find(x => x.id === currentPickerImageId_);
+  if (!img) return;
+  img.linkedPrompts = img.linkedPrompts || [];
+  const idx = img.linkedPrompts.indexOf(promptId);
+  if (idx >= 0) img.linkedPrompts.splice(idx, 1); else img.linkedPrompts.push(promptId);
+  img.updatedAt = Date.now();
+  renderImagePromptPicker();
+  renderAssets();
+  queueAutoSave();
+}
 // 자료 보관함은 이미지 라이브러리/영상 링크/프롬프트 3개 서브탭으로 나뉘어 있다 (유형별로 화면을 완전히 분리 —
 // 유형마다 필요한 정보/조작이 달라서(이미지는 썸네일 위주, 프롬프트는 텍스트+연결 이미지 위주) 하나의 필터로 섞어두는 것보다 낫다고 판단).
 const ASSET_SUBTAB_STORAGE_KEY = 'namu_pipeline_asset_subtab_v1';
@@ -3011,14 +3108,15 @@ function renderAssets() {
         <input value="${(a.name||'').replace(/"/g,'&quot;')}" placeholder="이름" onchange="updateAssetField('${a.id}','name',this.value)">
         <input value="${(a.tags||[]).join(', ').replace(/"/g,'&quot;')}" placeholder="태그 (쉼표로 구분)" onchange="updateAssetField('${a.id}','tags',this.value)">
         <textarea rows="2" placeholder="설명/메모 (참고용)" onchange="updateAssetField('${a.id}','description',this.value)">${(a.description||'').replace(/</g,'&lt;')}</textarea>
-        <select multiple size="3" onchange="updateAssetField('${a.id}','projects', Array.from(this.selectedOptions).map(o=>o.value))">
-          ${projects.map(p => `<option value="${p.id}" ${(a.projects||[]).includes(p.id)?'selected':''}>${p.name}</option>`).join('') || '<option disabled>등록된 프로젝트 없음</option>'}
-        </select>
+        <div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap; font-size:11px; color:var(--text-secondary);">
+          <span>연결 프로젝트: ${(a.projects||[]).length ? (a.projects||[]).map(pid => (projects.find(p=>p.id===pid)||{}).name).filter(Boolean).join(', ') : '없음(전체 공용)'}</span>
+          <button onclick="openAssetProjectPicker('${a.id}')" style="padding:2px 8px; font-size:11px;">관리</button>
+        </div>
         ${a.type === 'image' ? `
-        <label style="font-size:11px; color:var(--text-muted); margin-bottom:-4px;">연결된 프롬프트 (이 이미지를 만든/참고한 프롬프트)</label>
-        <select multiple size="3" onchange="updateAssetField('${a.id}','linkedPrompts', Array.from(this.selectedOptions).map(o=>o.value))">
-          ${assets.filter(x=>x.type==='prompt').map(p => `<option value="${p.id}" ${(a.linkedPrompts||[]).includes(p.id)?'selected':''}>${(p.name||'(이름 없음)').replace(/"/g,'&quot;')}</option>`).join('') || '<option disabled>등록된 프롬프트 없음</option>'}
-        </select>` : ''}
+        <div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap; font-size:11px; color:var(--text-secondary);">
+          <span>연결된 프롬프트: ${(a.linkedPrompts||[]).length ? (a.linkedPrompts||[]).map(pid => (assets.find(x=>x.id===pid)||{}).name || '(이름없음)').join(', ') : '없음'}</span>
+          <button onclick="openImagePromptPicker('${a.id}')" style="padding:2px 8px; font-size:11px;">관리</button>
+        </div>` : ''}
         ${a.type === 'prompt' ? renderLinkedImagesStrip_(a.id) : ''}
         <div class="asset-meta">
           <span>${a.type==='image' ? `${a.width||'?'}×${a.height||'?'} · ${a.sizeKB||0}KB` : a.type==='video' ? '링크 자료' : `${(a.text||'').length}자`}</span>
