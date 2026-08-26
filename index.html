@@ -215,9 +215,9 @@
   .asset-body { padding: 10px; display: flex; flex-direction: column; gap: 6px; }
   .asset-body input, .asset-body select, .asset-body textarea { font-size: 12px; padding: 5px 7px; font-family: inherit; resize: vertical; }
   .asset-meta { font-size: 11px; color: var(--text-muted); display: flex; justify-content: space-between; }
-  .asset-ai-summary { display: flex; flex-direction: column; gap: 3px; font-size: 11px; color: var(--text-secondary); background: var(--surface-2); border-radius: 6px; padding: 5px 7px; }
-  .ai-summary-text { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; word-break: break-word; white-space: pre-wrap; }
-  .ai-summary-text.expanded { -webkit-line-clamp: unset; overflow: visible; }
+  .asset-ai-summary { display: flex; flex-direction: column; gap: 3px; }
+  .asset-body textarea.ai-summary-textarea { font-size: 11px; line-height: 1.4; color: var(--text-secondary); background: var(--surface-2); border: 1px solid transparent; border-radius: 6px; padding: 5px 7px; }
+  .asset-body textarea.ai-summary-textarea:focus { border-color: var(--border); background: var(--surface-1); color: var(--text-primary); }
   .ai-summary-toggle-btn { font-size: 10px; padding: 2px 6px; align-self: flex-start; }
   /* ---------- 일정 계산기: 인라인 편집 표 + 사이드 패널 (Airtable/ClickUp 참고) ---------- */
   .sched-table td { padding: 4px 6px; vertical-align: middle; }
@@ -871,9 +871,9 @@
       </div>
       <div style="grid-column:1/-1; display:none" id="as-ai-summarize-field">
         <label style="display:flex; align-items:center; gap:6px; cursor:pointer;">
-          <input type="checkbox" id="as-ai-summarize" checked style="width:auto;"> 저장할 때 AI로 한 줄 요약 자동 생성
+          <input type="checkbox" id="as-ai-summarize" checked style="width:auto;"> 저장할 때 AI로 자동 정리
         </label>
-        <div style="font-size:11px; color:var(--text-muted); margin-top:2px;">프롬프트는 내용을, 유튜브 링크는 영상 제목을, 이미지는 이미지 내용을 바탕으로 AI가 짧게 정리해줍니다. (유튜브가 아닌 일반 링크는 자동 요약이 어려워요. 이미지를 여러 장 올리면 앞 5장까지만 자동 요약됩니다.)</div>
+        <div style="font-size:11px; color:var(--text-muted); margin-top:2px;">프롬프트는 내용을, 유튜브 링크는 영상 제목을 바탕으로 AI가 한 줄 요약을 붙여줍니다. 이미지는 이름·태그·요약·설명까지 AI가 채워주는데, 위에서 직접 입력해둔 항목(이름/태그/설명)은 그대로 두고 비워둔 항목만 채웁니다. (유튜브가 아닌 일반 링크는 자동 요약이 어려워요. 이미지를 여러 장 올리면 앞 5장까지만 자동 분석됩니다.)</div>
       </div>
     </div>
     <div class="modal-footer">
@@ -2729,6 +2729,34 @@ function initClipboardImagePaste_() {
     showToast(`클립보드 이미지 ${files.length}장을 붙여넣었습니다 — 이름/태그 입력 후 저장하세요`);
   });
 }
+// 이미지를 AI(비전 모델)에게 보내서 이름/태그/한줄요약/설명을 한 번에 JSON으로 받아온다.
+// 이미지 업로드(모달)와 AI 채팅 붙여넣기 두 경로에서 공통으로 쓰는 헬퍼.
+// 모델이 JSON 형식을 안 지켜도 최대한 안전하게 폴백하도록(빈 값으로) 처리한다.
+function analyzeImageWithAi_(dataUrl) {
+  const prompt = '이 이미지를 우리 팀 자료 보관함에 정리해서 등록하려고 해. 다음 JSON 형식으로만, 다른 설명 없이 답해줘:\n' +
+    '{"name": "20자 내외 한국어 이름", "tags": ["태그1", "태그2", "태그3"], "summary": "25자 내외 한국어 한 줄 요약", "description": "40자 내외 한국어 설명(구도·스타일·용도 등 참고 메모)"}\n' +
+    '이미지 속 인물/장소/오브젝트/스타일/분위기가 드러나면 태그에 포함해줘.';
+  return fetch(AI_PROXY_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ text: prompt, image: dataUrl }),
+  })
+    .then(r => r.json())
+    .then(data => {
+      if (data.error) throw new Error(data.error);
+      let parsed = null;
+      try {
+        const m = (data.reply || '').match(/\{[\s\S]*\}/);
+        if (m) parsed = JSON.parse(m[0]);
+      } catch (e) { parsed = null; }
+      return {
+        name: (parsed && parsed.name && String(parsed.name).trim()) || '',
+        tags: (parsed && Array.isArray(parsed.tags)) ? parsed.tags.map(t => String(t).trim()).filter(Boolean) : [],
+        summary: (parsed && parsed.summary && String(parsed.summary).trim()) || (data.reply || '').trim(),
+        description: (parsed && parsed.description && String(parsed.description).trim()) || '',
+      };
+    });
+}
 // AI 입력 패널에 이미지를 붙여넣었을 때: 모달 없이 곧바로 AI 분석 → 자료 보관함(이미지) 자동 등록.
 // 한 번에 여러 장이 붙여넣어져도(예: 스크린샷 여러 장 복사) 각각 독립적으로 처리한다.
 const AI_CHAT_PASTE_LIMIT_ = 3; // AI 호출이 한 번에 몰리는 것을 막기 위한 상한
@@ -2741,7 +2769,7 @@ function handleAiChatImagePaste_(files) {
     showToast(`이미지 ${AI_CHAT_PASTE_LIMIT_}장까지만 자동으로 분석·등록했습니다`);
   }
 }
-// 이미지 한 장을 AI로 분석해서(이름/태그/한줄요약) 자료 보관함에 이미지 자료로 자동 등록한다.
+// 이미지 한 장을 AI로 분석해서(이름/태그/요약/설명) 자료 보관함에 이미지 자료로 자동 등록한다.
 function registerAiChatImageAsAsset_(file) {
   const previewUrl = URL.createObjectURL(file);
   aiChatHistory.push({ role: 'user', content: '🖼️ 이미지를 붙여넣었습니다 — AI가 분석해서 자료 보관함에 등록할게요.', image: previewUrl });
@@ -2750,40 +2778,27 @@ function registerAiChatImageAsAsset_(file) {
   setAiTyping_(true);
   resizeImageFile_(file).then(({ dataUrl, blob, width, height }) => {
     const id = genId_('a');
-    const prompt = '이 이미지를 우리 팀 자료 보관함에 등록하려고 해. 다음 JSON 형식으로만, 다른 설명 없이 답해줘:\n{"name": "20자 내외 한국어 이름", "tags": ["태그1", "태그2", "태그3"], "summary": "25자 내외 한국어 한 줄 요약"}\n이미지 속 인물/장소/오브젝트/스타일/분위기가 드러나면 태그에 포함해줘.';
-    return fetch(AI_PROXY_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ text: prompt, image: dataUrl }),
-    })
-      .then(r => r.json())
-      .then(data => {
-        if (data.error) throw new Error(data.error);
-        let parsed = null;
-        try {
-          const m = (data.reply || '').match(/\{[\s\S]*\}/);
-          if (m) parsed = JSON.parse(m[0]);
-        } catch (e) { parsed = null; }
-        const name = (parsed && parsed.name && String(parsed.name).trim()) || `붙여넣은 이미지 (${new Date().toLocaleString('ko-KR')})`;
-        const tags = (parsed && Array.isArray(parsed.tags)) ? parsed.tags.map(t => String(t).trim()).filter(Boolean) : [];
-        const summary = (parsed && parsed.summary && String(parsed.summary).trim()) || (data.reply || '').trim();
-        return uploadAssetImageToStorage_(id, dataUrl).then(url => {
-          const asset = {
-            id, type: 'image', name, tags, projects: [], linkedPrompts: [], width, height, description: '',
-            sizeKB: Math.round(((url ? blob.size : dataUrl.length * 0.75)) / 1024),
-            aiSummary: summary,
-            updatedAt: Date.now(),
-          };
-          if (url) asset.url = url; else asset.dataUrl = dataUrl;
-          assets.push(asset);
-          renderAssets();
-          queueAutoSave();
-          setAiTyping_(false);
-          aiChatHistory.push({ role: 'assistant', content: `✅ 자료 보관함에 이미지로 등록했습니다: "${name}"${tags.length ? ' (태그: ' + tags.join(', ') + ')' : ''}\n${summary}` });
-          renderAiChat();
-          scrollAiChatToBottom_();
-        });
+    return analyzeImageWithAi_(dataUrl).then(result => {
+      const name = result.name || `붙여넣은 이미지 (${new Date().toLocaleString('ko-KR')})`;
+      const tags = result.tags;
+      const summary = result.summary;
+      return uploadAssetImageToStorage_(id, dataUrl).then(url => {
+        const asset = {
+          id, type: 'image', name, tags, projects: [], linkedPrompts: [], width, height, description: result.description,
+          sizeKB: Math.round(((url ? blob.size : dataUrl.length * 0.75)) / 1024),
+          aiSummary: summary,
+          updatedAt: Date.now(),
+        };
+        if (url) asset.url = url; else asset.dataUrl = dataUrl;
+        assets.push(asset);
+        renderAssets();
+        queueAutoSave();
+        setAiTyping_(false);
+        aiChatHistory.push({ role: 'assistant', content: `✅ 자료 보관함에 이미지로 등록했습니다: "${name}"${tags.length ? ' (태그: ' + tags.join(', ') + ')' : ''}\n${summary}` });
+        renderAiChat();
+        scrollAiChatToBottom_();
       });
+    });
   }).catch(err => {
     setAiTyping_(false);
     aiChatHistory.push({ role: 'assistant', content: '⚠️ 이미지 분석/등록에 실패했습니다: ' + err.message });
@@ -2844,12 +2859,19 @@ function saveAssetFromModal() {
   const files = Array.from(document.getElementById('as-imagefile').files || []);
   if (!files.length) { showToast('이미지 파일을 선택하세요'); return; }
   const linkedPrompts = Array.from(document.getElementById('as-linkedprompts').selectedOptions).map(o => o.value);
-  const IMAGE_AI_SUMMARY_LIMIT = 5; // 한 번에 너무 많은 이미지를 올리면 AI 호출이 몰리므로 앞쪽 N장까지만 자동 요약
+  const IMAGE_AI_SUMMARY_LIMIT = 5; // 한 번에 너무 많은 이미지를 올리면 AI 호출이 몰리므로 앞쪽 N장까지만 자동 분석
   const newImageAssets = [];
+  const fallbackNames_ = {}; // AI가 이름을 못 주거나(분석 끔/실패) 할 때 대신 쓸 파일명 기반 이름 (asset id별로)
   Promise.all(files.map((file, i) =>
     resizeImageFile_(file).then(({dataUrl, blob, width, height}) => {
       const id = genId_('a');
-      const assetName = files.length > 1 ? `${name || file.name.replace(/\.[^.]+$/, '')} (${i + 1})` : (name || file.name.replace(/\.[^.]+$/, ''));
+      const fileBaseName = file.name.replace(/\.[^.]+$/, '');
+      const fallbackName = files.length > 1 ? `${fileBaseName} (${i + 1})` : fileBaseName;
+      const userName = files.length > 1 ? (name ? `${name} (${i + 1})` : '') : name;
+      // 사용자가 이름을 직접 입력했으면 그대로 쓰고, 안 적었는데 AI 분석을 켜뒀으면 일단 비워둬서
+      // applyAiImageAnalysis_()가 AI 결과로 채우게 한다(실패하면 그때 파일명으로 대체됨).
+      const assetName = userName || (wantAiSummary ? '' : fallbackName);
+      fallbackNames_[id] = fallbackName;
       // 먼저 GitHub 업로드를 시도하고, 성공하면 Firestore에는 url(짧은 문자열)만 저장한다.
       // 실패하면(프록시 미설정 등) 예전처럼 dataUrl을 그대로 저장해서 기능은 계속 동작하게 한다.
       return uploadAssetImageToStorage_(id, dataUrl).then(url => {
@@ -2867,9 +2889,9 @@ function saveAssetFromModal() {
   )).then(() => {
     finishAssetSave_();
     if (wantAiSummary) {
-      newImageAssets.slice(0, IMAGE_AI_SUMMARY_LIMIT).forEach(a => generateAssetAiSummary_(a));
+      newImageAssets.slice(0, IMAGE_AI_SUMMARY_LIMIT).forEach(a => applyAiImageAnalysis_(a, fallbackNames_[a.id]));
       if (newImageAssets.length > IMAGE_AI_SUMMARY_LIMIT) {
-        showToast(`이미지 ${IMAGE_AI_SUMMARY_LIMIT}장까지만 자동 요약을 실행했습니다`);
+        showToast(`이미지 ${IMAGE_AI_SUMMARY_LIMIT}장까지만 자동 분석을 실행했습니다`);
       }
     }
   });
@@ -2880,9 +2902,41 @@ function finishAssetSave_() {
   queueAutoSave();
   showToast('자료가 추가되었습니다');
 }
+// 이미지 자료 하나를 AI로 분석해서 이름·태그·요약·설명을 채운다. 자료 등록 모달에서 새로 업로드했을 때와
+// "🤖 AI 요약 생성" 버튼을 눌렀을 때 둘 다 이 함수를 탄다.
+// 이름/태그/설명은 이미 값이 있으면(사용자가 직접 입력해둔 경우) 덮어쓰지 않고, 비어있는 항목만 채운다.
+// 요약(aiSummary)만 항상 최신 분석 결과로 갱신한다. fallbackName은 AI가 이름을 못 주거나 실패했을 때 대신 쓴다.
+function applyAiImageAnalysis_(asset, fallbackName) {
+  asset.aiSummary = 'AI 분석 중…';
+  renderAssets();
+  const imageRef = asset.dataUrl || asset.url;
+  if (!imageRef) { asset.aiSummary = ''; renderAssets(); return; }
+  analyzeImageWithAi_(imageRef).then(result => {
+    if (!assets.includes(asset)) return; // 그 사이 삭제됐으면 무시
+    asset.aiSummary = result.summary;
+    if (!asset.name || !asset.name.trim()) asset.name = result.name || fallbackName || '';
+    if (!(asset.tags && asset.tags.length) && result.tags.length) asset.tags = result.tags;
+    if (!(asset.description && asset.description.trim()) && result.description) asset.description = result.description;
+    asset.updatedAt = Date.now();
+    renderAssets();
+    queueAutoSave();
+  }).catch(err => {
+    if (!assets.includes(asset)) return;
+    if (!asset.name || !asset.name.trim()) asset.name = fallbackName || asset.name;
+    asset.aiSummary = '분석 실패: ' + err.message;
+    asset.updatedAt = Date.now();
+    renderAssets();
+    queueAutoSave();
+  });
+}
 // 프롬프트/영상 링크 자료를 저장할 때, AI에게 한 줄 요약을 요청해서 카드에 붙여준다.
 // 유튜브 링크는 oEmbed API로 영상 제목을 먼저 가져온 뒤 그 제목을 바탕으로 요약을 요청한다.
+// 이미지 자료는 이름/태그/설명까지 같이 채워주는 applyAiImageAnalysis_()로 위임한다.
 function generateAssetAiSummary_(asset) {
+  if (asset.type === 'image') {
+    applyAiImageAnalysis_(asset, asset.name);
+    return;
+  }
   asset.aiSummary = 'AI 요약 생성 중…';
   renderAssets();
   const finish = (summary) => {
@@ -2924,11 +2978,6 @@ function generateAssetAiSummary_(asset) {
       .then(meta => askAi(`다음은 레퍼런스로 등록한 유튜브 영상의 제목이야: "${meta.title}". 이 영상이 어떤 내용/레퍼런스로 참고하기 좋을지 25자 내외 한국어 한 줄로 요약해줘. 다른 설명 없이 요약 문장만 출력해.`))
       .catch(err => finish('요약 실패: ' + err.message));
     return;
-  }
-  if (asset.type === 'image') {
-    const imageRef = asset.dataUrl || asset.url;
-    if (!imageRef) { finish(''); return; }
-    askAi('이 이미지가 어떤 레퍼런스인지 나중에 목록에서 한눈에 알아볼 수 있게 25자 내외 한국어 한 줄로 요약해줘. 다른 설명 없이 요약 문장만 출력해.', imageRef);
   }
 }
 function updateAssetField(id, field, value) {
@@ -3135,9 +3184,12 @@ function activateAssetSubTab(type) {
   try { localStorage.setItem(ASSET_SUBTAB_STORAGE_KEY, type); } catch (e) {}
   renderAssets();
 }
-// AI 요약은 기본 2줄까지만 보이게 자르고, "더보기"를 눌렀을 때만 전체를 펼쳐서 보여준다.
+// AI 요약은 기본 2줄만 보이게 자르고, "더보기"를 눌렀을 때만 전체를 펼쳐서 보여준다.
+// 텍스트 영역(textarea)이라 요약 내용을 직접 고쳐서 저장할 수도 있다 — 다른 입력 필드처럼 값이 바뀌면(onchange) 바로 저장됨.
 // 펼침 상태는 자료 id 기준으로 기억해뒀다가 renderAssets()가 다시 그려져도(다른 필드 수정 등) 유지되게 한다.
 const aiSummaryExpandedIds_ = new Set();
+const AI_SUMMARY_ROWS_COLLAPSED_ = 2;
+const AI_SUMMARY_ROWS_EXPANDED_ = 6;
 function toggleAiSummaryExpand_(id) {
   if (aiSummaryExpandedIds_.has(id)) aiSummaryExpandedIds_.delete(id); else aiSummaryExpandedIds_.add(id);
   renderAssets();
@@ -3145,8 +3197,9 @@ function toggleAiSummaryExpand_(id) {
 function renderAiSummaryBlock_(a) {
   const expanded = aiSummaryExpandedIds_.has(a.id);
   const text = (a.aiSummary || '').replace(/</g, '&lt;');
+  const rows = expanded ? AI_SUMMARY_ROWS_EXPANDED_ : AI_SUMMARY_ROWS_COLLAPSED_;
   return `<div class="asset-ai-summary" data-asset-id="${a.id}">
-      <div class="ai-summary-text${expanded ? ' expanded' : ''}">🤖 ${text}</div>
+      <textarea class="ai-summary-textarea" rows="${rows}" placeholder="🤖 AI 요약 (직접 수정 가능)" onchange="updateAssetField('${a.id}','aiSummary',this.value)">${text}</textarea>
       <button type="button" class="ai-summary-toggle-btn" onclick="toggleAiSummaryExpand_('${a.id}')" style="display:none;">${expanded ? '접기 ▲' : '더보기 ▼'}</button>
     </div>`;
 }
@@ -3154,11 +3207,11 @@ function renderAiSummaryBlock_(a) {
 // 펼쳐진 상태는 "더보기"를 눌러야만 될 수 있으므로(=원래 2줄을 넘겼던 것이었으므로) 그대로 "접기" 버튼을 보여준다.
 function updateAiSummaryToggleVisibility_() {
   document.querySelectorAll('.asset-ai-summary').forEach(wrap => {
-    const textEl = wrap.querySelector('.ai-summary-text');
+    const ta = wrap.querySelector('.ai-summary-textarea');
     const btn = wrap.querySelector('.ai-summary-toggle-btn');
-    if (!textEl || !btn) return;
-    if (textEl.classList.contains('expanded')) { btn.style.display = ''; return; }
-    btn.style.display = textEl.scrollHeight > textEl.clientHeight + 1 ? '' : 'none';
+    if (!ta || !btn) return;
+    if (ta.rows > AI_SUMMARY_ROWS_COLLAPSED_) { btn.style.display = ''; return; }
+    btn.style.display = ta.scrollHeight > ta.clientHeight + 1 ? '' : 'none';
   });
 }
 function renderAssets() {
@@ -3208,7 +3261,7 @@ function renderAssets() {
       ${assetThumbHTML_(a)}
       <div class="asset-body">
         <span class="pill ${a.type==='image'?'ai':a.type==='video'?'pd':'director'}" style="align-self:flex-start;">${typeLabel[a.type]||a.type}</span>
-        ${a.aiSummary ? renderAiSummaryBlock_(a) : `<button onclick="generateAssetAiSummary_(assets.find(x=>x.id==='${a.id}'))" style="font-size:11px; padding:4px 8px; align-self:flex-start;">🤖 AI 요약 생성${a.type==='video' && !youtubeVideoId_(a.url) ? ' (설명/메모 기반)' : ''}</button>`}
+        ${a.aiSummary ? renderAiSummaryBlock_(a) : `<button onclick="generateAssetAiSummary_(assets.find(x=>x.id==='${a.id}'))" style="font-size:11px; padding:4px 8px; align-self:flex-start;">${a.type==='image' ? '🤖 AI로 이름·태그·요약 자동 정리' : '🤖 AI 요약 생성' + (a.type==='video' && !youtubeVideoId_(a.url) ? ' (설명/메모 기반)' : '')}</button>`}
         <input value="${(a.name||'').replace(/"/g,'&quot;')}" placeholder="이름" onchange="updateAssetField('${a.id}','name',this.value)">
         <input value="${(a.tags||[]).join(', ').replace(/"/g,'&quot;')}" placeholder="태그 (쉼표로 구분)" onchange="updateAssetField('${a.id}','tags',this.value)">
         <textarea rows="2" placeholder="설명/메모 (참고용)" onchange="updateAssetField('${a.id}','description',this.value)">${(a.description||'').replace(/</g,'&lt;')}</textarea>
