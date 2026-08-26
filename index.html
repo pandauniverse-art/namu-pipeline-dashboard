@@ -213,7 +213,7 @@
   .asset-card { background: var(--surface-1); border: 1px solid var(--border); border-radius: 8px; overflow: hidden; display: flex; flex-direction: column; }
   .asset-thumb { width: 100%; aspect-ratio: 1 / 1; object-fit: cover; background: var(--grid); display: block; cursor: pointer; }
   .asset-body { padding: 10px; display: flex; flex-direction: column; gap: 6px; }
-  .asset-body input, .asset-body select { font-size: 12px; padding: 5px 7px; }
+  .asset-body input, .asset-body select, .asset-body textarea { font-size: 12px; padding: 5px 7px; font-family: inherit; resize: vertical; }
   .asset-meta { font-size: 11px; color: var(--text-muted); display: flex; justify-content: space-between; }
   /* ---------- 일정 계산기: 인라인 편집 표 + 사이드 패널 (Airtable/ClickUp 참고) ---------- */
   .sched-table td { padding: 4px 6px; vertical-align: middle; }
@@ -767,6 +767,10 @@
       </div>
       <div style="grid-column:1/-1"><label>태그 (쉼표로 구분)</label><input id="as-tags" placeholder="예: 파사드, 야간, 블루톤"></div>
       <div style="grid-column:1/-1">
+        <label>설명 / 메모 (참고용, 자유롭게 적어두는 칸)</label>
+        <textarea id="as-description" rows="2" placeholder="예: 클라이언트가 톤앤매너 레퍼런스로 보내준 이미지. 파란 조명 강조."></textarea>
+      </div>
+      <div style="grid-column:1/-1">
         <label>연결 프로젝트 (여러 개 선택 가능 — Ctrl/Cmd 또는 Shift로 다중 선택, 비워두면 전체 공용)</label>
         <select id="as-projects" multiple style="height:100px;"></select>
       </div>
@@ -978,6 +982,7 @@ fbAuth.onAuthStateChanged(user => {
     gate.style.display = 'none';
     attachRealtimeListeners();
     maybeShowOnboardingTour();
+    restoreLastTab();
   } else {
     currentUser = null;
     gate.style.display = 'flex';
@@ -1154,7 +1159,10 @@ function schedFullEstimate(tasks) {
 }
 // ---------- 탭 전환 (기본 탭 + '더보기' 드롭다운의 고급 탭) ----------
 const MORE_TAB_LABELS = { schedule: '일정 계산기', guide: '파이프라인 가이드', report: '리포트 · 자동화' };
+const LAST_TAB_STORAGE_KEY = 'namu_pipeline_last_tab_v1';
+// 새로고침해도 보고 있던 탭이 그대로 유지되도록, 탭을 옮길 때마다 localStorage에 기록해둔다.
 function activateTab(tabName) {
+  try { localStorage.setItem(LAST_TAB_STORAGE_KEY, tabName); } catch (e) {}
   document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
   document.querySelectorAll('.tab-more-item').forEach(b => b.classList.remove('active'));
   document.querySelectorAll('.tabpanel').forEach(p => p.classList.remove('active'));
@@ -1172,6 +1180,15 @@ function activateTab(tabName) {
   document.getElementById('tab-' + tabName).classList.add('active');
   closeMoreMenu();
   renderAll();
+}
+// 새로고침 직후(로그인 확인이 끝난 뒤) 마지막으로 보고 있던 탭으로 되돌린다. 기록된 탭이 없거나
+// 유효하지 않으면(예: 예전 버전 데이터) 그냥 기본 탭(개요)에 머무른다.
+function restoreLastTab() {
+  let last = '';
+  try { last = localStorage.getItem(LAST_TAB_STORAGE_KEY) || ''; } catch (e) {}
+  if (last && document.getElementById('tab-' + last)) {
+    activateTab(last);
+  }
 }
 document.querySelectorAll('.tab-btn[data-tab]').forEach(btn => {
   btn.addEventListener('click', () => activateTab(btn.dataset.tab));
@@ -1586,6 +1603,7 @@ function buildAiProjectsContext_() {
       if (a.aiSummary) line += ` | 요약: ${a.aiSummary}`;
       else if (a.type === 'prompt' && a.text) line += ` | 내용: ${a.text.slice(0, 80)}`;
       else if (a.type === 'video' && a.url) line += ` | 링크: ${a.url}`;
+      if (a.description) line += ` | 설명: ${a.description}`;
       lines.push(line);
     });
   }
@@ -1783,6 +1801,7 @@ function openAssetModal() {
   document.getElementById('as-videourl').value = '';
   document.getElementById('as-prompttext').value = '';
   document.getElementById('as-tags').value = '';
+  document.getElementById('as-description').value = '';
   document.getElementById('as-ai-summarize').checked = true;
   const projSel = document.getElementById('as-projects');
   projSel.innerHTML = projects.map(p => `<option value="${p.id}">${p.name}</option>`).join('');
@@ -1802,11 +1821,12 @@ function saveAssetFromModal() {
   const name = document.getElementById('as-name').value.trim();
   const tags = document.getElementById('as-tags').value.split(',').map(t => t.trim()).filter(Boolean);
   const linkedProjects = Array.from(document.getElementById('as-projects').selectedOptions).map(o => o.value);
+  const description = document.getElementById('as-description').value.trim();
   const wantAiSummary = !!document.getElementById('as-ai-summarize').checked;
   if (type === 'video') {
     const url = document.getElementById('as-videourl').value.trim();
     if (!url) { showToast('영상 링크를 입력하세요'); return; }
-    const asset = {id: genId_('a'), type: 'video', name: name || url, tags, projects: linkedProjects, url, updatedAt: Date.now()};
+    const asset = {id: genId_('a'), type: 'video', name: name || url, tags, projects: linkedProjects, url, description, updatedAt: Date.now()};
     assets.push(asset);
     finishAssetSave_();
     if (wantAiSummary) generateAssetAiSummary_(asset);
@@ -1815,7 +1835,7 @@ function saveAssetFromModal() {
   if (type === 'prompt') {
     const text = document.getElementById('as-prompttext').value.trim();
     if (!text) { showToast('프롬프트 내용을 입력하세요'); return; }
-    const asset = {id: genId_('a'), type: 'prompt', name: name || text.slice(0, 30), tags, projects: linkedProjects, text, updatedAt: Date.now()};
+    const asset = {id: genId_('a'), type: 'prompt', name: name || text.slice(0, 30), tags, projects: linkedProjects, text, description, updatedAt: Date.now()};
     assets.push(asset);
     finishAssetSave_();
     if (wantAiSummary) generateAssetAiSummary_(asset);
@@ -1833,7 +1853,7 @@ function saveAssetFromModal() {
         type: 'image',
         name: files.length > 1 ? `${name || file.name.replace(/\.[^.]+$/, '')} (${i + 1})` : (name || file.name.replace(/\.[^.]+$/, '')),
         tags, projects: linkedProjects,
-        dataUrl, width, height,
+        dataUrl, width, height, description,
         sizeKB: Math.round((dataUrl.length * 0.75) / 1024),
         updatedAt: Date.now(),
       };
@@ -1957,7 +1977,7 @@ function renderAssets() {
     if (typeFilter && a.type !== typeFilter) return false;
     if (projFilter && !(a.projects || []).includes(projFilter)) return false;
     if (keyword) {
-      const hay = (a.name + ' ' + (a.tags || []).join(' ') + ' ' + (a.text || '') + ' ' + (a.url || '') + ' ' + (a.aiSummary || '')).toLowerCase();
+      const hay = (a.name + ' ' + (a.tags || []).join(' ') + ' ' + (a.text || '') + ' ' + (a.url || '') + ' ' + (a.aiSummary || '') + ' ' + (a.description || '')).toLowerCase();
       if (hay.indexOf(keyword) === -1) return false;
     }
     return true;
@@ -1980,6 +2000,7 @@ function renderAssets() {
         ${a.aiSummary ? `<div style="font-size:11px; color:var(--text-secondary); background:var(--surface-2); border-radius:6px; padding:5px 7px;">🤖 ${a.aiSummary.replace(/</g,'&lt;')}</div>` : ''}
         <input value="${(a.name||'').replace(/"/g,'&quot;')}" placeholder="이름" onchange="updateAssetField('${a.id}','name',this.value)">
         <input value="${(a.tags||[]).join(', ').replace(/"/g,'&quot;')}" placeholder="태그 (쉼표로 구분)" onchange="updateAssetField('${a.id}','tags',this.value)">
+        <textarea rows="2" placeholder="설명/메모 (참고용)" onchange="updateAssetField('${a.id}','description',this.value)">${(a.description||'').replace(/</g,'&lt;')}</textarea>
         <select multiple size="3" onchange="updateAssetField('${a.id}','projects', Array.from(this.selectedOptions).map(o=>o.value))">
           ${projects.map(p => `<option value="${p.id}" ${(a.projects||[]).includes(p.id)?'selected':''}>${p.name}</option>`).join('') || '<option disabled>등록된 프로젝트 없음</option>'}
         </select>
