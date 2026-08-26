@@ -816,7 +816,7 @@
     <h3>AI 어시스턴트</h3>
     <button type="button" onclick="clearAiChat()" style="font-size:11px; padding:3px 8px;">대화 지우기</button>
   </div>
-  <div style="font-size:11px; color:var(--text-muted);">현재 등록된 프로젝트·자료 데이터를 참고해서 답변합니다. 이어서 계속 물어볼 수 있어요. (아직 프로젝트/작업 필드를 자동으로 채워주는 기능은 아니고, 답변을 참고해서 직접 입력해 주세요.)</div>
+  <div style="font-size:11px; color:var(--text-muted);">현재 등록된 프로젝트·자료 데이터를 참고해서 답변합니다. "OO 프로젝트 담당자 OO로 추가해줘" 처럼 요청하면 실제로 프로젝트를 추가/수정해줘요 — 반영된 후에는 화면에서 한 번 확인해 주세요.</div>
   <div style="display:flex; gap:6px; flex-wrap:wrap;">
     <button type="button" onclick="askAiQuickSummary('inprogress')" style="font-size:11px; padding:5px 9px;">진행 중 프로젝트 요약</button>
     <button type="button" onclick="askAiQuickSummary('deadline')" style="font-size:11px; padding:5px 9px;">마감 임박 순 정리</button>
@@ -1706,6 +1706,71 @@ function handleAiInputKeydown(evt) {
   }
 }
 
+// AI 답변 안에 ```action { ... } ``` 형태의 코드블록이 있으면 꺼내서 반환하고,
+// 답변 텍스트에서는 그 코드블록을 제거한 "사람이 읽을 텍스트"만 따로 돌려준다.
+function extractAiAction_(replyText) {
+  const m = replyText.match(/```action\s*([\s\S]*?)```/);
+  if (!m) return { cleanText: replyText, action: null };
+  const cleanText = (replyText.slice(0, m.index) + replyText.slice(m.index + m[0].length)).trim();
+  let action = null;
+  try { action = JSON.parse(m[1].trim()); } catch (e) { action = null; }
+  return { cleanText, action };
+}
+
+const PROJECT_STATUS_OPTIONS_ = ['검토중', '입찰준비', '제출완료', '수주', '실주'];
+
+// AI가 제안한 action을 실제 데이터에 반영한다. 잘못되거나 애매한 요청은 반영하지 않고 이유를 알려준다.
+function applyAiAction_(action) {
+  try {
+    if (action.action === 'add_project') {
+      if (!action.name || !String(action.name).trim()) {
+        return { ok: false, message: '⚠️ 프로젝트명이 없어서 추가하지 못했습니다.' };
+      }
+      const data = {
+        name: String(action.name).trim(),
+        client: action.client ? String(action.client).trim() : '',
+        status: PROJECT_STATUS_OPTIONS_.includes(action.status) ? action.status : '검토중',
+        deadline: /^\d{4}-\d{2}-\d{2}$/.test(action.deadline || '') ? action.deadline : '',
+        director: action.director ? String(action.director).trim() : '',
+        pd: action.pd ? String(action.pd).trim() : '',
+        quoteAmount: Number(action.quoteAmount) || 0,
+        aiCredits: 0,
+        stageIndex: 0,
+        note: action.note ? String(action.note).trim() : '',
+      };
+      projects.push({ id: genId_('p'), blockedStages: [], ...data, updatedAt: Date.now() });
+      renderAll();
+      queueAutoSave();
+      return { ok: true, message: `✅ 프로젝트 "${data.name}"을(를) 추가했습니다. (화면에 바로 반영됨)` };
+    }
+    if (action.action === 'update_project') {
+      if (!action.match) return { ok: false, message: '⚠️ 어떤 프로젝트를 수정할지 알 수 없어서 반영하지 못했습니다.' };
+      const kw = String(action.match).toLowerCase();
+      const matches = projects.filter(p => (p.name || '').toLowerCase().includes(kw));
+      if (matches.length === 0) return { ok: false, message: `⚠️ "${action.match}"과(와) 일치하는 프로젝트를 찾지 못했습니다.` };
+      if (matches.length > 1) return { ok: false, message: `⚠️ "${action.match}"과(와) 일치하는 프로젝트가 여러 개라 반영하지 못했습니다. 프로젝트명을 더 정확히 말해주세요.` };
+      const p = matches[0];
+      const fields = action.fields || {};
+      const patch = {};
+      if (typeof fields.client === 'string') patch.client = fields.client.trim();
+      if (PROJECT_STATUS_OPTIONS_.includes(fields.status)) patch.status = fields.status;
+      if (/^\d{4}-\d{2}-\d{2}$/.test(fields.deadline || '')) patch.deadline = fields.deadline;
+      if (typeof fields.director === 'string') patch.director = fields.director.trim();
+      if (typeof fields.pd === 'string') patch.pd = fields.pd.trim();
+      if (fields.quoteAmount !== undefined) patch.quoteAmount = Number(fields.quoteAmount) || 0;
+      if (typeof fields.note === 'string') patch.note = fields.note.trim();
+      if (!Object.keys(patch).length) return { ok: false, message: '⚠️ 반영할 변경 내용이 없습니다.' };
+      Object.assign(p, patch, { updatedAt: Date.now() });
+      renderAll();
+      queueAutoSave();
+      return { ok: true, message: `✅ 프로젝트 "${p.name}" 정보를 수정했습니다. (화면에 바로 반영됨)` };
+    }
+    return { ok: false, message: '' };
+  } catch (err) {
+    return { ok: false, message: '⚠️ 자동 반영 중 오류가 발생했습니다: ' + err.message };
+  }
+}
+
 function submitAiInput() {
   const textEl = document.getElementById('aiInputText');
   const text = textEl.value.trim();
@@ -1725,8 +1790,20 @@ function submitAiInput() {
     .then(r => r.json())
     .then(data => {
       setAiTyping_(false);
-      const reply = data.error ? ('오류: ' + data.error) : (data.reply || '(응답 없음)');
-      aiChatHistory.push({ role: 'assistant', content: reply });
+      if (data.error) {
+        aiChatHistory.push({ role: 'assistant', content: '오류: ' + data.error });
+        renderAiChat();
+        scrollAiChatToBottom_();
+        return;
+      }
+      const raw = data.reply || '(응답 없음)';
+      const { cleanText, action } = extractAiAction_(raw);
+      let displayText = cleanText || raw;
+      if (action) {
+        const result = applyAiAction_(action);
+        if (result.message) displayText += (displayText ? '\n\n' : '') + result.message;
+      }
+      aiChatHistory.push({ role: 'assistant', content: displayText });
       renderAiChat();
       scrollAiChatToBottom_();
     })
