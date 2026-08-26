@@ -2546,15 +2546,23 @@ function applyAiAction_(action) {
     // "이미 있는 이미지의 태그/설명을 채워달라" 같은 요청엔 AI가 이 액션으로 "그 이미지를 실제로 열어서 분석해달라"고
     // 요청하고, 여기서 실제 이미지 데이터를 붙여 비전 모델에게 다시 물어보는 applyAiImageAnalysis_()로 이어준다
     // (업로드 시 자동 분석·"🤖 AI로 이름·태그·요약 자동 정리" 버튼과 동일한 로직 재사용).
+    // match를 비우거나 "전체"/"모두"/"모든"/"전부"/"all"로 주면 이미지 여러 장(자료 보관함 전체 또는 이름이 겹치는
+    // 여러 장)을 한 번에 분석 대상으로 잡는다 — 예전엔 이름이 여러 개 걸리면 무조건 에러로 막았는데, "이미지들 전부
+    // 정리해줘" 같은 일괄 요청을 못 받아주는 문제가 있어서 바꿈. 한 번에 너무 많이 몰리지 않도록 상한을 둔다.
     if (action.action === 'analyze_asset_image') {
-      if (!action.match) return { ok: false, message: '⚠️ 어떤 이미지를 분석할지 알 수 없어서 처리하지 못했습니다.' };
-      const kw = String(action.match).toLowerCase();
-      const matches = assets.filter(a => a.type === 'image' && (a.name || '').toLowerCase().includes(kw));
-      if (matches.length === 0) return { ok: false, message: `⚠️ "${action.match}"과(와) 일치하는 이미지를 찾지 못했습니다.` };
-      if (matches.length > 1) return { ok: false, message: `⚠️ "${action.match}"과(와) 일치하는 이미지가 여러 개라 처리하지 못했습니다. 이미지 이름을 더 정확히 말해주세요.` };
-      const imgAsset = matches[0];
-      applyAiImageAnalysis_(imgAsset, imgAsset.name); // 백그라운드로 실제 분석이 진행되고, 끝나면 알아서 화면/저장에 반영됨
-      return { ok: true, message: `🔎 "${imgAsset.name}" 이미지를 실제로 열어서 분석하고 있어요 — 잠시 후 이름·태그·설명이 채워지면 화면에 반영됩니다.` };
+      const ANALYZE_ASSET_IMAGE_LIMIT = 5;
+      const rawMatch = action.match ? String(action.match).trim() : '';
+      const ALL_KEYWORDS_ = ['all', '전체', '모두', '모든', '전부', '모든 이미지', '모든이미지'];
+      const wantsAll = !rawMatch || ALL_KEYWORDS_.includes(rawMatch.toLowerCase());
+      const targets = wantsAll
+        ? assets.filter(a => a.type === 'image')
+        : assets.filter(a => a.type === 'image' && (a.name || '').toLowerCase().includes(rawMatch.toLowerCase()));
+      if (!targets.length) return { ok: false, message: wantsAll ? '⚠️ 분석할 이미지가 없습니다.' : `⚠️ "${action.match}"과(와) 일치하는 이미지를 찾지 못했습니다.` };
+      const toProcess = targets.slice(0, ANALYZE_ASSET_IMAGE_LIMIT);
+      toProcess.forEach(imgAsset => applyAiImageAnalysis_(imgAsset, imgAsset.name)); // 백그라운드로 실제 분석이 진행되고, 끝나면 알아서 화면/저장에 반영됨
+      const remaining = targets.length - toProcess.length;
+      const names = toProcess.map(a => `"${a.name}"`).join(', ');
+      return { ok: true, message: `🔎 이미지 ${toProcess.length}장(${names})을 실제로 열어서 분석하고 있어요 — 잠시 후 화면에 반영됩니다.${remaining ? ` (나머지 ${remaining}장은 이번엔 처리하지 않았어요. "나머지도 분석해줘"라고 다시 요청해주세요.)` : ''}` };
     }
     if (action.action === 'add_schedule_task') {
       if (!action.name || !String(action.name).trim()) {
