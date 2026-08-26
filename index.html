@@ -782,6 +782,7 @@
       <div style="grid-column:1/-1; display:none" id="as-video-field">
         <label>영상 링크 (URL)</label>
         <input id="as-videourl" placeholder="예: https://drive.google.com/... 또는 유튜브 링크">
+        <div style="font-size:11px; color:var(--text-muted); margin-top:4px;">유튜브 링크(youtube.com, youtu.be)를 넣으면 카드에서 바로 재생할 수 있어요. 그 외 링크는 클릭 시 새 탭에서 열립니다.</div>
       </div>
       <div style="grid-column:1/-1; display:none" id="as-prompt-field">
         <label>프롬프트 내용</label>
@@ -1731,11 +1732,21 @@ function deleteAsset(id) {
   queueAutoSave();
 }
 
+function youtubeVideoId_(url) {
+  if (!url) return null;
+  const m = String(url).match(/(?:youtube\.com\/(?:watch\?v=|shorts\/|embed\/)|youtu\.be\/)([A-Za-z0-9_-]{11})/);
+  return m ? m[1] : null;
+}
+
 function assetThumbHTML_(a) {
   if (a.type === 'image') {
     return `<img class="asset-thumb" src="${a.dataUrl}" onclick="window.open('${(a.dataUrl||'').replace(/'/g, "\\'")}', '_blank')">`;
   }
   if (a.type === 'video') {
+    const ytId = youtubeVideoId_(a.url);
+    if (ytId) {
+      return `<iframe class="asset-thumb" style="border:0;" src="https://www.youtube-nocookie.com/embed/${ytId}" title="${(a.name||'유튜브 영상').replace(/"/g,'&quot;')}" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen loading="lazy"></iframe>`;
+    }
     return `<div class="asset-thumb" style="display:flex; align-items:center; justify-content:center; font-size:28px; cursor:pointer;" onclick="window.open('${(a.url||'').replace(/'/g, "\\'")}', '_blank')">🎬</div>`;
   }
   return `<div class="asset-thumb" style="display:flex; align-items:flex-start; padding:10px; font-size:11px; white-space:pre-wrap; overflow:hidden; color:var(--text-secondary); font-family:monospace;">${(a.text||'').slice(0,160).replace(/</g,'&lt;')}</div>`;
