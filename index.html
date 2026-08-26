@@ -842,6 +842,7 @@
       <div style="grid-column:1/-1" id="as-image-field">
         <label>이미지 파일 (여러 장 선택 가능)</label>
         <input id="as-imagefile" type="file" accept="image/*" multiple>
+        <div style="font-size:11px; color:var(--text-secondary); margin-top:4px;">💡 Miro·ChatGPT 등 다른 화면에서 이미지를 복사한 뒤, 이 창에서 Ctrl+V(붙여넣기)해도 바로 등록됩니다.</div>
         <label style="margin-top:8px;">연결할 프롬프트 (이 이미지를 만든/참고한 프롬프트 — 선택, 여러 장 올리면 전부에 같이 연결됨)</label>
         <select id="as-linkedprompts" multiple style="height:80px;"></select>
       </div>
@@ -2662,6 +2663,34 @@ function uploadAssetImageToStorage_(assetId, dataUrl) {
     })
     .catch(err => { console.warn('이미지 업로드 프록시 호출 실패, Firestore 직접 저장으로 대체합니다.', err); return null; });
 }
+// ---------- 클립보드 이미지 붙여넣기 (Miro/ChatGPT 등 다른 화면에서 이미지를 복사해 Ctrl+V로 바로 자료 등록) ----------
+function initClipboardImagePaste_() {
+  document.addEventListener('paste', (e) => {
+    const cd = e.clipboardData || window.clipboardData;
+    if (!cd || !cd.items) return;
+    const items = Array.from(cd.items);
+    const imageItems = items.filter(it => it.type && it.type.startsWith('image/'));
+    if (!imageItems.length) return; // 클립보드에 이미지가 없으면 평소처럼 텍스트 붙여넣기 등이 그대로 동작
+    const hasTextAlso = items.some(it => it.kind === 'string' && it.type === 'text/plain');
+    const activeTag = (document.activeElement && document.activeElement.tagName) || '';
+    const isTypingField = activeTag === 'INPUT' || activeTag === 'TEXTAREA';
+    if (isTypingField && hasTextAlso) return; // 텍스트 입력 중 같이 복사된 텍스트가 있으면 방해하지 않음
+    const files = imageItems.map(it => it.getAsFile()).filter(Boolean);
+    if (!files.length) return;
+    e.preventDefault();
+    const backdrop = document.getElementById('assetModalBackdrop');
+    if (!backdrop.classList.contains('active')) {
+      openAssetModal(); // 모달이 닫혀있었다면 자동으로 열어준다 (기본 유형이 '이미지'라 바로 이어서 붙여넣기 가능)
+    } else if (document.getElementById('as-type').value !== 'image') {
+      document.getElementById('as-type').value = 'image';
+      toggleAssetTypeFields();
+    }
+    const transfer = new DataTransfer();
+    files.forEach(f => transfer.items.add(f));
+    document.getElementById('as-imagefile').files = transfer.files;
+    showToast(`클립보드 이미지 ${files.length}장을 붙여넣었습니다 — 이름/태그 입력 후 저장하세요`);
+  });
+}
 function openAssetModal() {
   document.getElementById('as-type').value = 'image';
   document.getElementById('as-name').value = '';
@@ -3324,6 +3353,7 @@ function skipOnboardingTour() { finishOnboardingTour(); }
 renderAll();
 initAiDraggable_();
 initAiPanelResizable_();
+initClipboardImagePaste_();
 // 탭을 켜놓은 채 오래 두어도(다른 사람의 변경 없이) 마감 임박 알림은 계속 체크되도록 주기적으로도 확인한다.
 setInterval(() => { if (currentUser) maybeNotifyDeadlines_(); }, 10 * 60 * 1000);
 </script>
