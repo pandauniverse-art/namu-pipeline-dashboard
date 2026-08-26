@@ -2225,13 +2225,49 @@ function handleAiInputKeydown(evt) {
 }
 // AI 답변 안에 ```action { ... } ``` 형태의 코드블록이 있으면 꺼내서 반환하고,
 // 답변 텍스트에서는 그 코드블록을 제거한 "사람이 읽을 텍스트"만 따로 돌려준다.
+// AI가 지시한 형식(```action 펜스)을 정확히 안 지키고, 말로만 "태그/설명을 반영했다"고 답하면서
+// 실제로는 JSON을 안 주거나 다른 형식(```json 등, 혹은 펜스 없이 그냥 문장 중간에 { } )으로 주는 경우가 있어서,
+// 화면에는 아무것도 반영이 안 되는데 채팅에서는 마치 반영된 것처럼 보이는 문제가 있었다.
+// 그래서 1) 기존 ```action 펜스를 먼저 찾고, 2) 못 찾으면(또는 그 안 JSON이 깨져 있으면) 답변 전체에서
+// "action" 키를 가진 JSON 객체를 괄호 짝을 직접 맞춰가며 찾아서 최대한 살려서 반영한다.
 function extractAiAction_(replyText) {
-  const m = replyText.match(/```action\s*([\s\S]*?)```/);
-  if (!m) return { cleanText: replyText, action: null };
-  const cleanText = (replyText.slice(0, m.index) + replyText.slice(m.index + m[0].length)).trim();
-  let action = null;
-  try { action = JSON.parse(m[1].trim()); } catch (e) { action = null; }
-  return { cleanText, action };
+  const fenced = replyText.match(/```(?:action|json)?\s*(\{[\s\S]*?\})\s*```/);
+  if (fenced) {
+    try {
+      const action = JSON.parse(fenced[1].trim());
+      if (action && typeof action === 'object' && typeof action.action === 'string') {
+        const cleanText = (replyText.slice(0, fenced.index) + replyText.slice(fenced.index + fenced[0].length)).trim();
+        return { cleanText, action };
+      }
+    } catch (e) { /* 펜스 안 JSON이 깨져 있으면 아래 폴백으로 계속 진행 */ }
+  }
+  // 폴백: 코드블록 표시가 없거나 라벨이 다르더라도, 답변 어딘가에 "action" 키를 가진 JSON 객체가
+  // 있으면(중괄호 짝을 문자 단위로 직접 맞춰서, 문자열 안의 중괄호는 무시하고) 찾아서 반영한다.
+  for (let i = 0; i < replyText.length; i++) {
+    if (replyText[i] !== '{') continue;
+    let depth = 0, inStr = false, esc = false, end = -1;
+    for (let j = i; j < replyText.length; j++) {
+      const ch = replyText[j];
+      if (inStr) {
+        if (esc) esc = false;
+        else if (ch === '\\') esc = true;
+        else if (ch === '"') inStr = false;
+        continue;
+      }
+      if (ch === '"') { inStr = true; continue; }
+      if (ch === '{') depth++;
+      else if (ch === '}') { depth--; if (depth === 0) { end = j; break; } }
+    }
+    if (end === -1) continue;
+    try {
+      const action = JSON.parse(replyText.slice(i, end + 1));
+      if (action && typeof action === 'object' && typeof action.action === 'string') {
+        const cleanText = (replyText.slice(0, i) + replyText.slice(end + 1)).trim();
+        return { cleanText, action };
+      }
+    } catch (e) { /* JSON이 아니거나 action 키가 없으면 다음 '{' 후보로 계속 */ }
+  }
+  return { cleanText: replyText, action: null };
 }
 const PROJECT_STATUS_OPTIONS_ = ['검토중', '입찰준비', '제출완료', '수주', '실주'];
 const TASK_TYPE_OPTIONS_ = ['이미지', '영상', '오디오', '업스케일/렌더링', '기타'];
@@ -2577,7 +2613,10 @@ function applyAiAction_(action) {
       queueAutoSave();
       return { ok: true, message: `✅ 일정 계산기 "${t.name}" 작업 정보를 수정했습니다. (화면에 바로 반영됨)` };
     }
-    return { ok: false, message: '' };
+    // 여기까지 왔다는 건 action.action 값이 위에 정의된 8가지 중 어디에도 안 걸렸다는 뜻(AI가 오타를 냈거나
+    // 지원하지 않는 액션명을 썼거나). 예전엔 이때 메시지 없이 조용히 무시해서, 채팅에서는 반영된 것처럼
+    // 보이는데 실제 화면에는 아무 변화가 없는 문제가 있었다 — 그래서 반드시 경고를 보여주게 바꿈.
+    return { ok: false, message: `⚠️ AI가 "${action.action}"라는 동작을 시도했는데, 지원하지 않는 동작이라 반영하지 못했습니다.` };
   } catch (err) {
     return { ok: false, message: '⚠️ 자동 반영 중 오류가 발생했습니다: ' + err.message };
   }
