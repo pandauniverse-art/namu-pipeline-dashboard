@@ -2164,7 +2164,7 @@ function buildAiProjectsContext_() {
       let line = `- [${typeLabel[a.type] || a.type}] ${a.name || '(이름 없음)'}`;
       if ((a.tags || []).length) line += ` | 태그: ${a.tags.join(', ')}`;
       if (linkedNames.length) line += ` | 연결 프로젝트: ${linkedNames.join(', ')}`;
-      if (a.aiSummary) line += ` | 요약: ${a.aiSummary}`;
+      if (a.aiSummary) line += ` | 요약: ${stripAiThinking_(a.aiSummary)}`;
       else if (a.type === 'prompt' && a.text) line += ` | 내용: ${a.text.slice(0, 80)}`;
       else if (a.type === 'video' && a.url) line += ` | 링크: ${a.url}`;
       if (a.description) line += ` | 설명: ${a.description}`;
@@ -2223,31 +2223,22 @@ function handleAiInputKeydown(evt) {
     submitAiInput();
   }
 }
-// AI 답변 안에 ```action { ... } ``` 형태의 코드블록이 있으면 꺼내서 반환하고,
-// 답변 텍스트에서는 그 코드블록을 제거한 "사람이 읽을 텍스트"만 따로 돌려준다.
-// AI가 지시한 형식(```action 펜스)을 정확히 안 지키고, 말로만 "태그/설명을 반영했다"고 답하면서
-// 실제로는 JSON을 안 주거나 다른 형식(```json 등, 혹은 펜스 없이 그냥 문장 중간에 { } )으로 주는 경우가 있어서,
-// 화면에는 아무것도 반영이 안 되는데 채팅에서는 마치 반영된 것처럼 보이는 문제가 있었다.
-// 그래서 1) 기존 ```action 펜스를 먼저 찾고, 2) 못 찾으면(또는 그 안 JSON이 깨져 있으면) 답변 전체에서
-// "action" 키를 가진 JSON 객체를 괄호 짝을 직접 맞춰가며 찾아서 최대한 살려서 반영한다.
-function extractAiAction_(replyText) {
-  const fenced = replyText.match(/```(?:action|json)?\s*(\{[\s\S]*?\})\s*```/);
-  if (fenced) {
-    try {
-      const action = JSON.parse(fenced[1].trim());
-      if (action && typeof action === 'object' && typeof action.action === 'string') {
-        const cleanText = (replyText.slice(0, fenced.index) + replyText.slice(fenced.index + fenced[0].length)).trim();
-        return { cleanText, action };
-      }
-    } catch (e) { /* 펜스 안 JSON이 깨져 있으면 아래 폴백으로 계속 진행 */ }
-  }
-  // 폴백: 코드블록 표시가 없거나 라벨이 다르더라도, 답변 어딘가에 "action" 키를 가진 JSON 객체가
-  // 있으면(중괄호 짝을 문자 단위로 직접 맞춰서, 문자열 안의 중괄호는 무시하고) 찾아서 반영한다.
-  for (let i = 0; i < replyText.length; i++) {
-    if (replyText[i] !== '{') continue;
+// 일부 reasoning 모델(qwen3 계열 등)은 실제 답변 앞에 <think>...내부 추론...</think> 블록을 그대로
+// 남겨서 보내는 경우가 있다. 서버(프록시)에서 걸러주긴 하지만, 혹시 못 걸러진 게 그대로 넘어와도
+// 화면(요약/채팅)에 원문 추론이 노출되거나 그 안의 { } 때문에 JSON 인식이 꼬이지 않도록 클라이언트에서도 한 번 더 제거한다.
+function stripAiThinking_(text) {
+  return String(text || '').replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
+}
+// 텍스트 안에서 중괄호 짝을 문자 단위로 직접 맞춰가며(문자열 안의 중괄호는 무시) 유효한 JSON 객체를 찾는다.
+// requiredKey를 주면 그 키를 가진 첫 결과만 인정한다. 없으면 null.
+// (단순히 첫 '{'~마지막 '}' 를 통째로 잡는 정규식은, 그 사이에 상관없는 다른 중괄호가 하나라도 끼어있으면
+//  깨진 JSON을 만들어버려서 아예 인식을 못 하는 문제가 있었다 — 특히 AI가 추론 과정을 같이 내보낼 때 잘 걸림.)
+function findJsonObject_(text, requiredKey) {
+  for (let i = 0; i < text.length; i++) {
+    if (text[i] !== '{') continue;
     let depth = 0, inStr = false, esc = false, end = -1;
-    for (let j = i; j < replyText.length; j++) {
-      const ch = replyText[j];
+    for (let j = i; j < text.length; j++) {
+      const ch = text[j];
       if (inStr) {
         if (esc) esc = false;
         else if (ch === '\\') esc = true;
@@ -2260,12 +2251,38 @@ function extractAiAction_(replyText) {
     }
     if (end === -1) continue;
     try {
-      const action = JSON.parse(replyText.slice(i, end + 1));
+      const obj = JSON.parse(text.slice(i, end + 1));
+      if (obj && typeof obj === 'object' && (!requiredKey || typeof obj[requiredKey] !== 'undefined')) {
+        return { obj, start: i, end: end + 1 };
+      }
+    } catch (e) { /* JSON이 아니거나 필요한 키가 없으면 다음 '{' 후보로 계속 */ }
+  }
+  return null;
+}
+// AI 답변 안에 ```action { ... } ``` 형태의 코드블록이 있으면 꺼내서 반환하고,
+// 답변 텍스트에서는 그 코드블록을 제거한 "사람이 읽을 텍스트"만 따로 돌려준다.
+// AI가 지시한 형식(```action 펜스)을 정확히 안 지키고, 말로만 "태그/설명을 반영했다"고 답하면서
+// 실제로는 JSON을 안 주거나 다른 형식(```json 등, 혹은 펜스 없이 그냥 문장 중간에 { } )으로 주는 경우가 있어서,
+// 화면에는 아무것도 반영이 안 되는데 채팅에서는 마치 반영된 것처럼 보이는 문제가 있었다.
+// 그래서 1) 기존 ```action 펜스를 먼저 찾고, 2) 못 찾으면(또는 그 안 JSON이 깨져 있으면) 답변 전체에서
+// "action" 키를 가진 JSON 객체를 findJsonObject_()로 찾아서 최대한 살려서 반영한다.
+function extractAiAction_(replyText) {
+  replyText = stripAiThinking_(replyText);
+  const fenced = replyText.match(/```(?:action|json)?\s*(\{[\s\S]*?\})\s*```/);
+  if (fenced) {
+    try {
+      const action = JSON.parse(fenced[1].trim());
       if (action && typeof action === 'object' && typeof action.action === 'string') {
-        const cleanText = (replyText.slice(0, i) + replyText.slice(end + 1)).trim();
+        const cleanText = (replyText.slice(0, fenced.index) + replyText.slice(fenced.index + fenced[0].length)).trim();
         return { cleanText, action };
       }
-    } catch (e) { /* JSON이 아니거나 action 키가 없으면 다음 '{' 후보로 계속 */ }
+    } catch (e) { /* 펜스 안 JSON이 깨져 있으면 아래 폴백으로 계속 진행 */ }
+  }
+  // 폴백: 코드블록 표시가 없거나 라벨이 다르더라도, 답변 어딘가에 "action" 키를 가진 JSON 객체가 있으면 찾아서 반영한다.
+  const found = findJsonObject_(replyText, 'action');
+  if (found && typeof found.obj.action === 'string') {
+    const cleanText = (replyText.slice(0, found.start) + replyText.slice(found.end)).trim();
+    return { cleanText, action: found.obj };
   }
   return { cleanText: replyText, action: null };
 }
@@ -2525,6 +2542,20 @@ function applyAiAction_(action) {
       queueAutoSave();
       return { ok: true, message: `✅ 자료 "${a.name}" 정보를 수정했습니다. (화면에 바로 반영됨)` };
     }
+    // 채팅 텍스트만으로는 AI가 이미지 실제 내용을 볼 수 없어서(텍스트 요약/태그가 아직 비어있는 이미지라면 더더욱),
+    // "이미 있는 이미지의 태그/설명을 채워달라" 같은 요청엔 AI가 이 액션으로 "그 이미지를 실제로 열어서 분석해달라"고
+    // 요청하고, 여기서 실제 이미지 데이터를 붙여 비전 모델에게 다시 물어보는 applyAiImageAnalysis_()로 이어준다
+    // (업로드 시 자동 분석·"🤖 AI로 이름·태그·요약 자동 정리" 버튼과 동일한 로직 재사용).
+    if (action.action === 'analyze_asset_image') {
+      if (!action.match) return { ok: false, message: '⚠️ 어떤 이미지를 분석할지 알 수 없어서 처리하지 못했습니다.' };
+      const kw = String(action.match).toLowerCase();
+      const matches = assets.filter(a => a.type === 'image' && (a.name || '').toLowerCase().includes(kw));
+      if (matches.length === 0) return { ok: false, message: `⚠️ "${action.match}"과(와) 일치하는 이미지를 찾지 못했습니다.` };
+      if (matches.length > 1) return { ok: false, message: `⚠️ "${action.match}"과(와) 일치하는 이미지가 여러 개라 처리하지 못했습니다. 이미지 이름을 더 정확히 말해주세요.` };
+      const imgAsset = matches[0];
+      applyAiImageAnalysis_(imgAsset, imgAsset.name); // 백그라운드로 실제 분석이 진행되고, 끝나면 알아서 화면/저장에 반영됨
+      return { ok: true, message: `🔎 "${imgAsset.name}" 이미지를 실제로 열어서 분석하고 있어요 — 잠시 후 이름·태그·설명이 채워지면 화면에 반영됩니다.` };
+    }
     if (action.action === 'add_schedule_task') {
       if (!action.name || !String(action.name).trim()) {
         return { ok: false, message: '⚠️ 작업명이 없어서 일정 계산기에 추가하지 못했습니다.' };
@@ -2783,15 +2814,16 @@ function analyzeImageWithAi_(dataUrl) {
     .then(r => r.json())
     .then(data => {
       if (data.error) throw new Error(data.error);
-      let parsed = null;
-      try {
-        const m = (data.reply || '').match(/\{[\s\S]*\}/);
-        if (m) parsed = JSON.parse(m[0]);
-      } catch (e) { parsed = null; }
+      // 프록시에서 걸러주긴 하지만, 혹시 못 걸러진 <think> 추론 블록이 남아있으면 여기서 한 번 더 제거하고,
+      // 중괄호 짝을 직접 맞춰가며 JSON을 찾는다(단순 첫~마지막 중괄호 매칭은 추론문 안의 다른 중괄호 때문에
+      // JSON이 깨져서 파싱에 통째로 실패하는 문제가 있었음 — 그러면 아래 summary 폴백이 추론 원문 전체가 되어버림).
+      const cleanedReply = stripAiThinking_(data.reply);
+      const found = findJsonObject_(cleanedReply);
+      const parsed = found ? found.obj : null;
       return {
         name: (parsed && parsed.name && String(parsed.name).trim()) || '',
         tags: (parsed && Array.isArray(parsed.tags)) ? parsed.tags.map(t => String(t).trim()).filter(Boolean) : [],
-        summary: (parsed && parsed.summary && String(parsed.summary).trim()) || (data.reply || '').trim(),
+        summary: (parsed && parsed.summary && String(parsed.summary).trim()) || cleanedReply || (data.reply || '').trim(),
         description: (parsed && parsed.description && String(parsed.description).trim()) || '',
       };
     });
@@ -3235,7 +3267,9 @@ function toggleAiSummaryExpand_(id) {
 }
 function renderAiSummaryBlock_(a) {
   const expanded = aiSummaryExpandedIds_.has(a.id);
-  const text = (a.aiSummary || '').replace(/</g, '&lt;');
+  // 예전에 <think> 추론 블록이 그대로 저장된 자료가 있을 수 있어서(수정 전 버그), 표시할 때는 걸러준다.
+  // 저장된 값 자체를 고치려면 "🤖 AI로 이름·태그·요약 자동 정리"를 다시 눌러 재분석하면 된다.
+  const text = stripAiThinking_(a.aiSummary || '').replace(/</g, '&lt;');
   const rows = expanded ? AI_SUMMARY_ROWS_EXPANDED_ : AI_SUMMARY_ROWS_COLLAPSED_;
   return `<div class="asset-ai-summary" data-asset-id="${a.id}">
       <textarea class="ai-summary-textarea" rows="${rows}" placeholder="🤖 AI 요약 (직접 수정 가능)" onchange="updateAssetField('${a.id}','aiSummary',this.value)">${text}</textarea>
