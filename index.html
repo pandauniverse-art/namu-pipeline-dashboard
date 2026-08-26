@@ -3338,7 +3338,7 @@ function renderAiSummaryBlock_(a) {
   const text = stripAiThinking_(a.aiSummary || '').replace(/</g, '&lt;');
   const rows = expanded ? AI_SUMMARY_ROWS_EXPANDED_ : AI_SUMMARY_ROWS_COLLAPSED_;
   return `<div class="asset-ai-summary" data-asset-id="${a.id}">
-      <textarea class="ai-summary-textarea" rows="${rows}" placeholder="🤖 AI 요약 (직접 수정 가능)" onchange="updateAssetField('${a.id}','aiSummary',this.value)">${text}</textarea>
+      <textarea class="ai-summary-textarea" data-field="aiSummary" rows="${rows}" placeholder="🤖 AI 요약 (직접 수정 가능)" onchange="updateAssetField('${a.id}','aiSummary',this.value)">${text}</textarea>
       <button type="button" class="ai-summary-toggle-btn" onclick="toggleAiSummaryExpand_('${a.id}')" style="display:none;">${expanded ? '접기 ▲' : '더보기 ▼'}</button>
     </div>`;
 }
@@ -3352,6 +3352,35 @@ function updateAiSummaryToggleVisibility_() {
     if (ta.rows > AI_SUMMARY_ROWS_COLLAPSED_) { btn.style.display = ''; return; }
     btn.style.display = ta.scrollHeight > ta.clientHeight + 1 ? '' : 'none';
   });
+}
+// renderAssets()는 매번 grid.innerHTML을 통째로 다시 그리는데, AI 분석이 진행 중이거나(analyzeAssetImage 등)
+// Firestore 실시간 동기화(onSnapshot)로 다른 필드가 바뀌면 그 사이에도 renderAssets()가 호출된다.
+// 이때 사용자가 마침 태그/설명/이름 입력창에 타이핑 중이었다면, 그 input/textarea DOM 자체가 통째로
+// 새로 만들어지면서 포커스와 아직 커밋 전인(onchange 전) 입력값이 그대로 날아가 버려서
+// "입력이 안 된다"처럼 보이는 문제가 있었다. 다시 그리기 직전에 지금 포커스된 자료 입력 필드를 기억해뒀다가,
+// 다시 그린 뒤 같은 자료의 같은 필드를 찾아서 값/커서 위치/포커스를 그대로 복원한다.
+function captureAssetEditFocus_(grid) {
+  const el = document.activeElement;
+  if (!el || !grid || !grid.contains(el)) return null;
+  const field = el.dataset && el.dataset.field;
+  const card = el.closest ? el.closest('.asset-card') : null;
+  const assetId = card && card.dataset ? card.dataset.assetId : null;
+  if (!field || !assetId) return null;
+  let selStart = null, selEnd = null;
+  try { selStart = el.selectionStart; selEnd = el.selectionEnd; } catch (e) {}
+  return { assetId, field, value: el.value, selStart, selEnd };
+}
+function restoreAssetEditFocus_(grid, captured) {
+  if (!captured || !grid) return;
+  const card = grid.querySelector(`.asset-card[data-asset-id="${captured.assetId}"]`);
+  if (!card) return;
+  const el = card.querySelector(`[data-field="${captured.field}"]`);
+  if (!el) return;
+  el.value = captured.value;
+  el.focus();
+  if (captured.selStart !== null && captured.selEnd !== null) {
+    try { el.setSelectionRange(captured.selStart, captured.selEnd); } catch (e) {}
+  }
 }
 function renderAssets() {
   const projFilterEl = document.getElementById('assetProjectFilter');
@@ -3395,15 +3424,16 @@ function renderAssets() {
     ? '조건에 맞는 자료가 없습니다.'
     : `등록된 ${emptyLabel[assetSubTab] || ''} 자료가 없습니다. '+ 자료 추가'로 시작하세요.`;
   const typeLabel = {image: '이미지', video: '영상', prompt: '프롬프트'};
+  const activeEdit_ = captureAssetEditFocus_(grid);
   grid.innerHTML = rows.map(a => `
-    <div class="asset-card">
+    <div class="asset-card" data-asset-id="${a.id}">
       ${assetThumbHTML_(a)}
       <div class="asset-body">
         <span class="pill ${a.type==='image'?'ai':a.type==='video'?'pd':'director'}" style="align-self:flex-start;">${typeLabel[a.type]||a.type}</span>
         ${a.aiSummary ? renderAiSummaryBlock_(a) : `<button onclick="generateAssetAiSummary_(assets.find(x=>x.id==='${a.id}'))" style="font-size:11px; padding:4px 8px; align-self:flex-start;">${a.type==='image' ? '🤖 AI로 이름·태그·요약 자동 정리' : '🤖 AI 요약 생성' + (a.type==='video' && !youtubeVideoId_(a.url) ? ' (설명/메모 기반)' : '')}</button>`}
-        <input value="${(a.name||'').replace(/"/g,'&quot;')}" placeholder="이름" onchange="updateAssetField('${a.id}','name',this.value)">
-        <input value="${(a.tags||[]).join(', ').replace(/"/g,'&quot;')}" placeholder="태그 (쉼표로 구분)" onchange="updateAssetField('${a.id}','tags',this.value)">
-        <textarea rows="2" placeholder="설명/메모 (참고용)" onchange="updateAssetField('${a.id}','description',this.value)">${(a.description||'').replace(/</g,'&lt;')}</textarea>
+        <input data-field="name" value="${(a.name||'').replace(/"/g,'&quot;')}" placeholder="이름" onchange="updateAssetField('${a.id}','name',this.value)">
+        <input data-field="tags" value="${(a.tags||[]).join(', ').replace(/"/g,'&quot;')}" placeholder="태그 (쉼표로 구분)" onchange="updateAssetField('${a.id}','tags',this.value)">
+        <textarea data-field="description" rows="2" placeholder="설명/메모 (참고용)" onchange="updateAssetField('${a.id}','description',this.value)">${(a.description||'').replace(/</g,'&lt;')}</textarea>
         <div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap; font-size:11px; color:var(--text-secondary);">
           <span>연결 프로젝트: ${(a.projects||[]).length ? (a.projects||[]).map(pid => (projects.find(p=>p.id===pid)||{}).name).filter(Boolean).join(', ') : '없음(전체 공용)'}</span>
           <button onclick="openAssetProjectPicker('${a.id}')" style="padding:2px 8px; font-size:11px;">관리</button>
@@ -3425,6 +3455,7 @@ function renderAssets() {
       </div>
     </div>
   `).join('');
+  restoreAssetEditFocus_(grid, activeEdit_);
   requestAnimationFrame(updateAiSummaryToggleVisibility_);
   const totalKB = assets.filter(a => a.type === 'image').reduce((s, a) => s + (a.sizeKB || 0), 0);
   const legacyCount = assets.filter(a => a.type === 'image' && a.dataUrl && !a.url).length;
