@@ -267,6 +267,32 @@
   .ai-msg { font-size: 12.5px; line-height: 1.5; white-space: pre-wrap; padding: 8px 11px; border-radius: 10px; max-width: 88%; word-break: break-word; }
   .ai-msg.user { align-self: flex-end; background: var(--text-primary); color: var(--surface-1); border-bottom-right-radius: 3px; }
   .ai-msg.assistant { align-self: flex-start; background: var(--surface-1); color: var(--text-secondary); border: 1px solid var(--border); border-bottom-left-radius: 3px; }
+  /* ---------- 모바일 화면 최적화 ---------- */
+  @media (max-width: 760px) {
+    main { padding: 16px 12px 90px; }
+    nav.tabs { padding: 8px 10px 0; gap: 0; overflow-x: auto; flex-wrap: nowrap; -webkit-overflow-scrolling: touch; }
+    nav.tabs button { padding: 8px 10px; font-size: 12.5px; }
+    .card { padding: 14px; }
+    h2.section-title { margin: 22px 0 10px; }
+    .grid.stat-row { grid-template-columns: repeat(2, 1fr); }
+    /* 열이 많은 표는 카드 안에서 가로로만 스크롤되게 하고(페이지 전체가 가로로 밀리지 않도록), 칸이 너무 눌려 보이지 않도록 최소 너비를 둔다 */
+    .card { overflow-x: auto; }
+    table { min-width: 620px; }
+    .sched-table { min-width: 560px; }
+    .kanban { grid-template-columns: 1fr; }
+    .form-grid { grid-template-columns: 1fr; }
+    .side-panel .rev-row { grid-template-columns: repeat(3, 1fr); }
+    .modal { padding: 18px; max-height: 92vh; }
+    .modal-backdrop { padding: 10px; }
+    .ai-panel { right: 10px; left: 10px; width: auto; bottom: 72px; height: 70vh; }
+    .ai-fab { right: 14px; bottom: 14px; padding: 10px 14px; font-size: 12.5px; }
+    .side-panel { width: 100%; max-width: 100%; }
+    .bar-row .bar-label { width: 96px; font-size: 11px; }
+    .filter-row { gap: 6px; }
+    .filter-row select, .filter-row input[type="text"] { flex: 1 1 140px; min-width: 0; }
+    .row-actions { flex-wrap: wrap; }
+    #deadlineNotifyBar { flex-wrap: wrap; }
+  }
 </style>
 </head>
 <body>
@@ -309,6 +335,7 @@
 <main>
   <!-- OVERVIEW -->
   <section class="tabpanel active" id="tab-overview">
+    <div class="note-box" id="deadlineNotifyBar" style="display:flex; align-items:center; justify-content:space-between; gap:10px;"></div>
     <div class="grid stat-row" id="statTiles"></div>
     <h2 class="section-title">파이프라인 단계별 분포</h2>
     <div id="stageDistribution" class="card"></div>
@@ -399,6 +426,8 @@
         <option value="">연결 프로젝트 전체</option>
       </select>
     </div>
+    <h2 class="section-title">타임라인 (표준 시나리오 기준)</h2>
+    <div class="card" id="scheduleGanttView" style="margin-bottom:20px;"></div>
     <div id="scheduleTaskGroups"></div>
     <div class="empty-state" id="scheduleTaskEmpty" style="display:none">등록된 작업이 없습니다. 아래 '+ 새 작업' 행을 눌러 추가하세요.</div>
     <div id="scheduleResults"></div>
@@ -646,6 +675,14 @@
       <button class="primary" onclick="generateReport()">지금 리포트 생성</button>
       <div id="reportOutput" style="margin-top:14px;">아직 생성된 리포트가 없습니다.</div>
     </div>
+    <h2 class="section-title">클라이언트별 히스토리</h2>
+    <div class="card" id="clientHistoryView" style="margin-bottom:20px;"></div>
+    <h2 class="section-title">프로젝트별 수익성 (견적 대비 실제 투입)</h2>
+    <div class="note-box" style="margin-top:0;">프로젝트 수정 모달의 "상세 옵션"에서 실제 투입 비용을 입력한 프로젝트만 계산됩니다. 마진 = 견적 − 실제 투입.</div>
+    <div class="card" id="profitabilityView" style="margin-bottom:20px;"></div>
+    <h2 class="section-title">최근 활동 로그</h2>
+    <div class="note-box" style="margin-top:0;">프로젝트/작업 상태 변경, 보류 처리, AI에 의한 자동 반영 등 주요 변경 사항을 최근 순으로 보여줍니다(최대 200건 보관).</div>
+    <div class="card" id="activityLogView" style="max-height:360px; overflow-y:auto;"></div>
     <div class="note-box">
       <strong>자동 실행(시간별) 안내:</strong> 이 대시보드는 브라우저에서 열리는 화면형 도구라 자체적으로 "몇 시간마다 저절로" 실행되지는 않습니다. 진짜 자동화(예: 매일 오전 9시에 진행현황을 자동 집계해서 알림)를 붙이려면, 데이터가 저장되는 위치(구글시트/노션/사내 폴더 등) 하나를 정하고 알려주세요 — 그 위치를 기준으로 정해진 시간마다 자동 실행되는 예약 작업을 연결해 드립니다.
     </div>
@@ -671,6 +708,7 @@
     <div class="form-grid advanced-fields" id="p-advanced-fields" style="display:none;">
       <div><label>견적 금액 (원)</label><input id="p-quote" type="number" min="0" step="10000" placeholder="예: 15000000"></div>
       <div><label>AI 크레딧 사용량</label><input id="p-aicredits" type="number" min="0" step="1" placeholder="예: 3200"></div>
+      <div><label>실제 투입 비용 (원, 인건비 등)</label><input id="p-actualcost" type="number" min="0" step="10000" placeholder="예: 9000000"></div>
       <div style="grid-column:1/-1"><label>현재 단계</label>
         <select id="p-stage"></select>
       </div>
@@ -858,11 +896,32 @@ function assigneePillClass(v) { return ASSIGNEE_PILL_CLASS[v] || 'pending'; }
 let projects = [];
 let aiTasks = [];
 let assets = []; // 자료 보관함: 레퍼런스/AI 학습용 이미지 등
+let activityLog = []; // 최근 활동 로그 (상태 변경/보류/AI 자동 반영 등 기록, 최대 ACTIVITY_LOG_MAX건만 보관)
 let idCounter = 1; // 더 이상 ID 생성에 쓰이지 않음(레거시 백업 파일 호환용으로만 유지) — 실제 ID는 genId_()로 생성
 // 새로고침 시 카운터가 1부터 다시 시작되면서 기존 자료와 같은 ID가 생겨 덮어써지는 문제가 있었음.
 // 그래서 ID는 시간값+임의값 조합으로 생성해 충돌 가능성을 사실상 없앤다.
 function genId_(prefix) {
   return prefix + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+}
+// ---------- 최근 활동 로그 ----------
+const ACTIVITY_LOG_MAX = 200; // 무한정 쌓이지 않도록 최근 N건만 보관(오래된 건 다음 자동저장 때 서버에서도 삭제됨)
+function logActivity_(text) {
+  const entry = { id: genId_('log'), text: String(text), at: Date.now(), updatedAt: Date.now() };
+  activityLog.push(entry);
+  if (activityLog.length > ACTIVITY_LOG_MAX) {
+    const removed = activityLog.splice(0, activityLog.length - ACTIVITY_LOG_MAX);
+    removed.forEach(r => deletedIds.activityLog.push(r.id));
+  }
+}
+function renderActivityLog() {
+  const el = document.getElementById('activityLogView');
+  if (!el) return;
+  const rows = activityLog.slice().sort((a, b) => (b.at || 0) - (a.at || 0)).slice(0, 100);
+  el.innerHTML = rows.length ? rows.map(l => `
+    <div style="display:flex; justify-content:space-between; gap:12px; padding:6px 0; border-bottom:1px solid var(--grid); font-size:12.5px;">
+      <span>${(l.text || '').replace(/</g,'&lt;')}</span>
+      <span style="color:var(--text-muted); white-space:nowrap; font-size:11px;">${new Date(l.at || 0).toLocaleString('ko-KR')}</span>
+    </div>`).join('') : `<div class="empty-state">아직 기록된 활동이 없습니다.</div>`;
 }
 // ---------- Firebase (Firestore 실시간 동기화 + 로그인) ----------
 const firebaseConfig = {
@@ -878,14 +937,14 @@ const ALLOWED_EMAIL_DOMAIN = 'namucreative.com';
 firebase.initializeApp(firebaseConfig);
 const fbAuth = firebase.auth();
 const db = firebase.firestore();
-const COLLECTIONS = ['projects', 'aiTasks', 'scheduleTasks', 'assets'];
+const COLLECTIONS = ['projects', 'aiTasks', 'scheduleTasks', 'assets', 'activityLog'];
 const CLOUD_FUNCTIONS_READY = false; // 자동 이메일점검 등 일부 기능은 Blaze(카드 등록) 전환 후 활성화됩니다
 const AI_PROXY_URL = 'https://namu-ai-proxy.vercel.app/api/ai-input'; // AI 입력 기능은 Vercel 서버리스 함수를 통해 Groq API와 연결됩니다
 let autoSaveTimer = null;
 let autoSaveSuppressed = true; // 초기 로딩 중에는 자동저장을 잠깐 막아서 방금 불러온 데이터를 그대로 되쏘는 것을 방지
-let deletedIds = {projects: [], aiTasks: [], scheduleTasks: [], assets: []}; // 아직 서버에 삭제 반영 안 된 id들
-let lastFlushedAt = {projects: 0, aiTasks: 0, scheduleTasks: 0, assets: 0}; // 컬렉션별로 마지막에 서버에 반영한 시점 (이 이후 updatedAt인 항목만 다시 씀)
-let snapshotsReady = {projects: false, aiTasks: false, scheduleTasks: false, assets: false};
+let deletedIds = {projects: [], aiTasks: [], scheduleTasks: [], assets: [], activityLog: []}; // 아직 서버에 삭제 반영 안 된 id들
+let lastFlushedAt = {projects: 0, aiTasks: 0, scheduleTasks: 0, assets: 0, activityLog: 0}; // 컬렉션별로 마지막에 서버에 반영한 시점 (이 이후 updatedAt인 항목만 다시 씀)
+let snapshotsReady = {projects: false, aiTasks: false, scheduleTasks: false, assets: false, activityLog: false};
 let currentUser = null;
 function isAutoSaveConfigured() {
   return !!currentUser;
@@ -899,10 +958,12 @@ function isAnyModalOpen_() {
 }
 const COLLECTION_VAR = {
   projects: () => projects, aiTasks: () => aiTasks, scheduleTasks: () => scheduleTasks, assets: () => assets,
+  activityLog: () => activityLog,
 };
 const COLLECTION_SETTER = {
   projects: (v) => { projects = v; }, aiTasks: (v) => { aiTasks = v; },
   scheduleTasks: (v) => { scheduleTasks = v; }, assets: (v) => { assets = v; },
+  activityLog: (v) => { activityLog = v; },
 };
 // 각 컬렉션에 실시간 리스너를 붙인다 - 누군가 문서를 추가/수정/삭제하면 즉시(폴링 없이) 반영됨.
 // 모달/사이드패널이 열려있는 동안에는 화면을 다시 그리지 않고 큐에만 쌓아둔다(입력 중 화면이 바뀌는 것 방지).
@@ -960,7 +1021,7 @@ function doAutoSave() {
   if (opCount === 0) { showSyncStatus('자동 저장됨 · ' + new Date().toLocaleTimeString('ko-KR')); return; }
   batch.commit().then(() => {
     COLLECTIONS.forEach(coll => { lastFlushedAt[coll] = flushedAt; });
-    deletedIds = {projects: [], aiTasks: [], scheduleTasks: [], assets: []};
+    deletedIds = {projects: [], aiTasks: [], scheduleTasks: [], assets: [], activityLog: []};
     showSyncStatus('자동 저장됨 · ' + new Date().toLocaleTimeString('ko-KR'));
   }).catch(err => {
     showSyncStatus('저장 실패: ' + err.message);
@@ -1236,14 +1297,15 @@ function openProjectModal(id) {
     document.getElementById('p-pd').value = p.pd;
     document.getElementById('p-quote').value = p.quoteAmount || '';
     document.getElementById('p-aicredits').value = p.aiCredits || '';
+    document.getElementById('p-actualcost').value = p.actualCost || '';
     document.getElementById('p-stage').value = p.stageIndex;
     document.getElementById('p-note').value = p.note || '';
-    const hasAdvancedData = !!(p.quoteAmount || p.aiCredits || p.note || (p.stageIndex && p.stageIndex !== 0));
+    const hasAdvancedData = !!(p.quoteAmount || p.aiCredits || p.actualCost || p.note || (p.stageIndex && p.stageIndex !== 0));
     setProjectAdvancedVisible(hasAdvancedData);
   } else {
     document.getElementById('projectModalTitle').textContent = '프로젝트 추가';
     document.getElementById('projectId').value = '';
-    ['p-name','p-client','p-director','p-pd','p-note','p-quote','p-aicredits'].forEach(f => document.getElementById(f).value = '');
+    ['p-name','p-client','p-director','p-pd','p-note','p-quote','p-aicredits','p-actualcost'].forEach(f => document.getElementById(f).value = '');
     document.getElementById('p-status').value = '검토중';
     document.getElementById('p-deadline').value = '';
     document.getElementById('p-stage').value = 0;
@@ -1274,15 +1336,18 @@ function saveProject() {
     pd: document.getElementById('p-pd').value.trim(),
     quoteAmount: parseFloat(document.getElementById('p-quote').value) || 0,
     aiCredits: parseFloat(document.getElementById('p-aicredits').value) || 0,
+    actualCost: parseFloat(document.getElementById('p-actualcost').value) || 0,
     stageIndex: parseInt(document.getElementById('p-stage').value, 10),
     note: document.getElementById('p-note').value.trim(),
   };
   if (!data.name) { showToast('프로젝트명을 입력하세요'); return; }
   if (id) {
     const p = projects.find(x => x.id === id);
+    if (p.status !== data.status) logActivity_(`"${data.name}" 상태 변경: ${p.status} → ${data.status}`);
     Object.assign(p, data, {updatedAt: Date.now()});
   } else {
     projects.push({id: genId_('p'), blockedStages: [], blockReason: '', ...data, updatedAt: Date.now()});
+    logActivity_(`"${data.name}" 프로젝트 추가됨`);
   }
   closeProjectModal();
   renderAll();
@@ -1292,6 +1357,8 @@ function saveProject() {
 function deleteProject(id) {
   if (!confirm('이 프로젝트를 삭제할까요?')) return;
   const now = Date.now();
+  const deletedName = (projects.find(p => p.id === id) || {}).name || '(이름 없음)';
+  logActivity_(`"${deletedName}" 프로젝트 삭제됨`);
   projects = projects.filter(p => p.id !== id);
   aiTasks = aiTasks.filter(t => t.project !== id);
   // 삭제된 프로젝트를 참조하던 일정 작업/자료의 연결을 끊는다 (참조가 끊긴 채 남아있지 않도록)
@@ -1315,11 +1382,13 @@ function toggleBlocked(id) {
   if (pos >= 0) {
     p.blockedStages.splice(pos, 1);
     if (!p.blockedStages.length) p.blockReason = '';
+    logActivity_(`"${p.name}" 보류 해제`);
   } else {
     const reason = prompt(`"${p.name}" 프로젝트를 보류 처리합니다. 사유를 짧게 입력해주세요 (예: 클라이언트 피드백 대기, 리소스 부족).`, p.blockReason || '');
     if (reason === null) return; // 취소하면 보류 처리하지 않음
     p.blockedStages.push(idx);
     p.blockReason = reason.trim();
+    logActivity_(`"${p.name}" 보류 처리${p.blockReason ? ' (사유: ' + p.blockReason + ')' : ''}`);
   }
   p.updatedAt = Date.now();
   renderAll();
@@ -1355,6 +1424,7 @@ function saveTask() {
     status: document.getElementById('t-status').value,
     updatedAt: Date.now(),
   });
+  logActivity_(`"${title}" 작업 추가됨`);
   closeTaskModal();
   renderAll();
   queueAutoSave();
@@ -1363,14 +1433,18 @@ function saveTask() {
 function cycleTaskStatus(id) {
   const order = ['대기','진행중','완료'];
   const t = aiTasks.find(x => x.id === id);
+  const prevStatus = t.status;
   t.status = order[(order.indexOf(t.status) + 1) % order.length];
   t.updatedAt = Date.now();
+  logActivity_(`"${t.title}" 작업 상태 변경: ${prevStatus} → ${t.status}`);
   renderAll();
   queueAutoSave();
 }
 function deleteTask(id) {
+  const deletedTitle = (aiTasks.find(t => t.id === id) || {}).title || '(제목 없음)';
   aiTasks = aiTasks.filter(t => t.id !== id);
   deletedIds.aiTasks.push(id);
+  logActivity_(`"${deletedTitle}" 작업 삭제됨`);
   renderAll();
   queueAutoSave();
 }
@@ -1383,6 +1457,51 @@ function daysUntil(dateStr) {
   return Math.round((d - now) / 86400000);
 }
 function formatWon(n) { return '₩' + Math.round(n).toLocaleString('ko-KR'); }
+// ---------- 마감 임박 브라우저 알림 ----------
+// 주의: 이 알림은 "이 대시보드 탭이 열려 있는 동안"에만 동작합니다. 탭/브라우저를 완전히 닫으면 알려줄 방법이 없어요
+// (진짜 백그라운드 푸시는 서버 인프라가 추가로 필요해서, 이번엔 브라우저 알림 권한 기반으로 구현했습니다).
+const DEADLINE_ALERT_THRESHOLD = 3; // D-3 이내(오늘 포함)면 알림
+const DEADLINE_ALERT_STORAGE_KEY = 'namu_pipeline_notified_deadlines_v1';
+function renderDeadlineNotifyBar() {
+  const el = document.getElementById('deadlineNotifyBar');
+  if (!el || typeof Notification === 'undefined') { if (el) el.style.display = 'none'; return; }
+  if (Notification.permission === 'granted') {
+    el.style.display = 'flex';
+    el.innerHTML = `<span>🔔 마감 임박(D-${DEADLINE_ALERT_THRESHOLD} 이내) 브라우저 알림이 켜져 있습니다. (이 탭을 열어두는 동안만 동작해요)</span>`;
+  } else if (Notification.permission === 'denied') {
+    el.style.display = 'flex';
+    el.innerHTML = `<span>🔕 브라우저 알림이 차단되어 있어요. 받고 싶으면 브라우저 주소창 옆 사이트 설정에서 알림을 허용해주세요.</span>`;
+  } else {
+    el.style.display = 'flex';
+    el.innerHTML = `<span>마감 임박(D-${DEADLINE_ALERT_THRESHOLD} 이내) 프로젝트를 브라우저 알림으로 받아보시겠어요?</span><button onclick="requestDeadlineNotifyPermission()" style="white-space:nowrap;">🔔 알림 받기</button>`;
+  }
+}
+function requestDeadlineNotifyPermission() {
+  if (typeof Notification === 'undefined') return;
+  Notification.requestPermission().then(() => {
+    renderDeadlineNotifyBar();
+    maybeNotifyDeadlines_();
+  });
+}
+// 오늘 이미 알린 프로젝트는 다시 알리지 않도록 localStorage에 (날짜, id 목록)을 기록해둔다.
+function maybeNotifyDeadlines_() {
+  if (typeof Notification === 'undefined' || Notification.permission !== 'granted') return;
+  const todayKey = new Date().toISOString().slice(0, 10);
+  let notified = { date: todayKey, ids: [] };
+  try {
+    const saved = JSON.parse(localStorage.getItem(DEADLINE_ALERT_STORAGE_KEY) || 'null');
+    if (saved && saved.date === todayKey) notified = saved;
+  } catch (e) {}
+  const urgent = projects.filter(p => {
+    const d = daysUntil(p.deadline);
+    return d !== null && d >= 0 && d <= DEADLINE_ALERT_THRESHOLD && !notified.ids.includes(p.id);
+  });
+  if (!urgent.length) return;
+  notified.ids.push(...urgent.map(p => p.id));
+  try { localStorage.setItem(DEADLINE_ALERT_STORAGE_KEY, JSON.stringify(notified)); } catch (e) {}
+  const body = urgent.map(p => { const d = daysUntil(p.deadline); return `${p.name} (${d === 0 ? '오늘 마감' : 'D-' + d})`; }).join(', ');
+  try { new Notification('나무씨 파이프라인 · 마감 임박', { body }); } catch (e) {}
+}
 function renderOverview() {
   const total = projects.length;
   const inProgress = projects.filter(p => p.status !== '수주' && p.status !== '실주').length;
@@ -1423,6 +1542,8 @@ function renderOverview() {
         <button onclick="diagnoseProjectWithAi('${x.p.id}')" style="font-size:11px; padding:4px 8px; white-space:nowrap;">🤖 AI 진단</button>
       </div>
     </div>`).join('') : `<div class="empty-state">현재 위험 신호가 있는 프로젝트가 없습니다.</div>`;
+  renderDeadlineNotifyBar();
+  maybeNotifyDeadlines_();
 }
 function statusPillClass(status) {
   return status === '수주' ? 'good' : status === '실주' ? 'blocked' : status === '제출완료' ? 'progress' : 'pending';
@@ -1493,6 +1614,56 @@ function renderAIQueue() {
     }).join('') : `<div class="empty-state" style="padding:16px 8px;">없음</div>`;
   });
 }
+function renderClientHistory() {
+  const el = document.getElementById('clientHistoryView');
+  if (!el) return;
+  const byClient = {};
+  projects.forEach(p => {
+    const name = (p.client || '').trim();
+    if (!name) return;
+    if (!byClient[name]) byClient[name] = { name, total: 0, won: 0, lost: 0, active: 0, names: [] };
+    const c = byClient[name];
+    c.total++;
+    if (p.status === '수주') c.won++;
+    else if (p.status === '실주') c.lost++;
+    else c.active++;
+    c.names.push(p.name);
+  });
+  const rows = Object.values(byClient).sort((a, b) => b.total - a.total);
+  el.innerHTML = rows.length ? rows.map(c => {
+    const decided = c.won + c.lost;
+    const winRate = decided ? Math.round((c.won / decided) * 1000) / 10 : null;
+    return `<div style="padding:9px 0; border-bottom:1px solid var(--grid);">
+      <div style="display:flex; justify-content:space-between; align-items:baseline; flex-wrap:wrap; gap:4px;">
+        <strong>${c.name}</strong>
+        <span style="font-size:12px; color:var(--text-secondary);">총 ${c.total}건 · 수주 ${c.won} · 실주 ${c.lost} · 진행중 ${c.active}${winRate !== null ? ` · 수주율 ${winRate}%` : ''}</span>
+      </div>
+      <div style="font-size:11px; color:var(--text-muted); margin-top:3px;">${c.names.join(', ')}</div>
+    </div>`;
+  }).join('') : `<div class="empty-state">클라이언트 정보가 입력된 프로젝트가 없습니다.</div>`;
+}
+function renderProfitability() {
+  const el = document.getElementById('profitabilityView');
+  if (!el) return;
+  const rows = projects.filter(p => p.actualCost && p.actualCost > 0);
+  if (!rows.length) {
+    el.innerHTML = `<div class="empty-state">실제 투입 비용이 입력된 프로젝트가 없습니다.</div>`;
+    return;
+  }
+  const sorted = rows.slice().sort((a, b) => (b.quoteAmount - b.actualCost) - (a.quoteAmount - a.actualCost));
+  el.innerHTML = sorted.map(p => {
+    const margin = (p.quoteAmount || 0) - p.actualCost;
+    const marginRate = p.quoteAmount ? Math.round((margin / p.quoteAmount) * 1000) / 10 : null;
+    const negative = margin < 0;
+    return `<div style="display:flex; justify-content:space-between; align-items:center; padding:8px 0; border-bottom:1px solid var(--grid);">
+      <div><strong>${p.name}</strong> <span style="color:var(--text-muted); font-size:12px;">· ${p.client||'-'}</span></div>
+      <div style="font-size:12px; color:var(--text-secondary); text-align:right;">
+        견적 ${p.quoteAmount ? formatWon(p.quoteAmount) : '미입력'} · 실투입 ${formatWon(p.actualCost)}
+        <div style="color:${negative ? 'var(--critical)' : 'var(--good)'}; font-weight:600;">마진 ${formatWon(margin)}${marginRate !== null ? ` (${marginRate}%)` : ''}${negative ? ' ⚠ 적자' : ''}</div>
+      </div>
+    </div>`;
+  }).join('');
+}
 const WORKLOAD_WARNING_THRESHOLD = 3; // 동시 진행중 프로젝트가 이 건수 이상이면 과부하 경고
 function renderWorkloadSummary() {
   const el = document.getElementById('workloadSummary');
@@ -1553,7 +1724,7 @@ function generateReport() {
   lines.push('[프로젝트별 진행 상황]');
   projects.forEach(p => {
     const d = daysUntil(p.deadline);
-    lines.push(`- ${p.name} (${p.client}) | 상태: ${p.status} | 단계: ${STAGES[p.stageIndex].id} ${STAGES[p.stageIndex].name} | 마감: ${p.deadline||'미정'}${d!==null?` (D-${d})`:''}${p.blockedStages.length?` | ⚠ 보류 단계 있음${p.blockReason ? ' (' + p.blockReason + ')' : ''}`:''} | 견적: ${p.quoteAmount?formatWon(p.quoteAmount):'미입력'} | AI 크레딧: ${(p.aiCredits||0).toLocaleString('ko-KR')}`);
+    lines.push(`- ${p.name} (${p.client}) | 상태: ${p.status} | 단계: ${STAGES[p.stageIndex].id} ${STAGES[p.stageIndex].name} | 마감: ${p.deadline||'미정'}${d!==null?` (D-${d})`:''}${p.blockedStages.length?` | ⚠ 보류 단계 있음${p.blockReason ? ' (' + p.blockReason + ')' : ''}`:''} | 견적: ${p.quoteAmount?formatWon(p.quoteAmount):'미입력'}${p.actualCost ? ` | 실투입: ${formatWon(p.actualCost)} | 마진: ${formatWon((p.quoteAmount||0)-p.actualCost)}` : ''} | AI 크레딧: ${(p.aiCredits||0).toLocaleString('ko-KR')}`);
   });
   lines.push('');
   const risk = projects.filter(p => { const d = daysUntil(p.deadline); return (d!==null && d<=7) || p.blockedStages.length; });
@@ -1570,6 +1741,9 @@ function renderAll() {
   renderScheduleTasks();
   renderGuide();
   renderAssets();
+  renderActivityLog();
+  renderProfitability();
+  renderClientHistory();
 }
 // ---------- 파이프라인 가이드 (내부 교육/참고용) ----------
 function renderGuide() {
@@ -1617,6 +1791,7 @@ function buildAiProjectsContext_() {
       const stage = stageInfo ? `${stageInfo.id}. ${stageInfo.name}` : '미지정';
       let line = `- ${p.name} | 클라이언트: ${p.client || '-'} | 입찰상태: ${p.status || '-'} | 마감일: ${p.deadline || '미정'} | 담당 디렉터: ${p.director || '-'} / PD: ${p.pd || '-'} | 현재 단계: ${stage}`;
       if (p.quoteAmount) line += ` | 견적: ${Number(p.quoteAmount).toLocaleString()}원`;
+      if (p.actualCost) line += ` | 실제 투입: ${Number(p.actualCost).toLocaleString()}원 | 마진: ${((p.quoteAmount||0)-p.actualCost).toLocaleString()}원`;
       if (p.blockedStages && p.blockedStages.length) line += ` | ⚠ 보류 단계 있음${p.blockReason ? ' (사유: ' + p.blockReason + ')' : ''}`;
       if (p.note) line += ` | 비고: ${p.note}`;
       lines.push(line);
@@ -1735,6 +1910,7 @@ function applyAiAction_(action) {
         note: action.note ? String(action.note).trim() : '',
       };
       projects.push({ id: genId_('p'), blockedStages: [], blockReason: '', ...data, updatedAt: Date.now() });
+      logActivity_(`🤖 AI가 "${data.name}" 프로젝트를 추가함`);
       renderAll();
       queueAutoSave();
       return { ok: true, message: `✅ 프로젝트 "${data.name}"을(를) 추가했습니다. (화면에 바로 반영됨)` };
@@ -1757,6 +1933,7 @@ function applyAiAction_(action) {
       if (typeof fields.note === 'string') patch.note = fields.note.trim();
       if (!Object.keys(patch).length) return { ok: false, message: '⚠️ 반영할 변경 내용이 없습니다.' };
       Object.assign(p, patch, { updatedAt: Date.now() });
+      logActivity_(`🤖 AI가 "${p.name}" 프로젝트 정보를 수정함 (${Object.keys(patch).join(', ')})`);
       renderAll();
       queueAutoSave();
       return { ok: true, message: `✅ 프로젝트 "${p.name}" 정보를 수정했습니다. (화면에 바로 반영됨)` };
@@ -1782,6 +1959,7 @@ function applyAiAction_(action) {
         updatedAt: Date.now(),
       };
       aiTasks.push(task);
+      logActivity_(`🤖 AI가 "${task.title}" 작업을 추가함`);
       renderAll();
       queueAutoSave();
       return { ok: true, message: `✅ 작업 "${task.title}"을(를) 추가했습니다. (화면에 바로 반영됨)` };
@@ -1807,9 +1985,41 @@ function applyAiAction_(action) {
       }
       if (!Object.keys(patch).length) return { ok: false, message: '⚠️ 반영할 변경 내용이 없습니다.' };
       Object.assign(t, patch, { updatedAt: Date.now() });
+      logActivity_(`🤖 AI가 "${t.title}" 작업 정보를 수정함 (${Object.keys(patch).join(', ')})`);
       renderAll();
       queueAutoSave();
       return { ok: true, message: `✅ 작업 "${t.title}" 정보를 수정했습니다. (화면에 바로 반영됨)` };
+    }
+    if (action.action === 'add_asset') {
+      const type = action.type;
+      if (type !== 'video' && type !== 'prompt') {
+        return { ok: false, message: '⚠️ 채팅으로는 "영상 링크"나 "프롬프트" 유형만 추가할 수 있어요(이미지는 채팅으로 파일을 첨부할 수 없어서 지원하지 않습니다).' };
+      }
+      if (type === 'video' && !(action.url && String(action.url).trim())) {
+        return { ok: false, message: '⚠️ 영상 링크(URL)가 없어서 자료를 추가하지 못했습니다.' };
+      }
+      if (type === 'prompt' && !(action.text && String(action.text).trim())) {
+        return { ok: false, message: '⚠️ 프롬프트 내용이 없어서 자료를 추가하지 못했습니다.' };
+      }
+      let linkedProjects = [];
+      if (action.project) {
+        const resolved = resolveProjectMatch_(action.project);
+        if (resolved.ambiguous) return { ok: false, message: `⚠️ "${action.project}"과(와) 일치하는 프로젝트가 여러 개라 자료를 추가하지 못했습니다.` };
+        if (resolved.id === null) return { ok: false, message: `⚠️ "${action.project}"과(와) 일치하는 프로젝트를 찾지 못해 자료를 추가하지 못했습니다.` };
+        linkedProjects = [resolved.id];
+      }
+      const tags = Array.isArray(action.tags)
+        ? action.tags.map(t => String(t).trim()).filter(Boolean)
+        : (typeof action.tags === 'string' ? action.tags.split(',').map(t => t.trim()).filter(Boolean) : []);
+      const description = action.description ? String(action.description).trim() : '';
+      const asset = type === 'video'
+        ? { id: genId_('a'), type: 'video', name: (action.name && String(action.name).trim()) || String(action.url).trim(), tags, projects: linkedProjects, url: String(action.url).trim(), description, updatedAt: Date.now() }
+        : { id: genId_('a'), type: 'prompt', name: (action.name && String(action.name).trim()) || String(action.text).trim().slice(0, 30), tags, projects: linkedProjects, text: String(action.text).trim(), description, updatedAt: Date.now() };
+      assets.push(asset);
+      logActivity_(`🤖 AI가 자료 "${asset.name}"을(를) 추가함`);
+      renderAll();
+      queueAutoSave();
+      return { ok: true, message: `✅ 자료 "${asset.name}"을(를) 자료 보관함에 추가했습니다. (화면에 바로 반영됨)` };
     }
     return { ok: false, message: '' };
   } catch (err) {
@@ -2019,7 +2229,12 @@ function generateAssetAiSummary_(asset) {
   if (asset.type === 'video') {
     const ytId = youtubeVideoId_(asset.url);
     if (!ytId) {
-      finish(''); // 유튜브가 아니면 자동 요약을 지원하지 않음(제목을 가져올 방법이 없음)
+      // 유튜브가 아니면 제목을 자동으로 가져올 방법이 없어서, 사용자가 적어둔 설명/메모가 있을 때만 그걸 바탕으로 요약한다.
+      if (asset.description && asset.description.trim()) {
+        askAi(`다음은 링크 자료(${asset.url})에 대해 사용자가 남긴 설명/메모야: "${asset.description.trim()}". 이 내용을 바탕으로 나중에 목록에서 한눈에 알아볼 수 있게 25자 내외 한국어 한 줄로 요약해줘. 다른 설명 없이 요약 문장만 출력해.`);
+      } else {
+        finish(''); // 설명도 없으면 요약할 근거가 없으니 건너뜀
+      }
       return;
     }
     fetch(`https://www.youtube.com/oembed?url=${encodeURIComponent(asset.url)}&format=json`)
@@ -2132,7 +2347,7 @@ function renderAssets() {
       ${assetThumbHTML_(a)}
       <div class="asset-body">
         <span class="pill ${a.type==='image'?'ai':a.type==='video'?'pd':'director'}" style="align-self:flex-start;">${typeLabel[a.type]||a.type}</span>
-        ${a.aiSummary ? `<div style="font-size:11px; color:var(--text-secondary); background:var(--surface-2); border-radius:6px; padding:5px 7px;">🤖 ${a.aiSummary.replace(/</g,'&lt;')}</div>` : ''}
+        ${a.aiSummary ? `<div style="font-size:11px; color:var(--text-secondary); background:var(--surface-2); border-radius:6px; padding:5px 7px;">🤖 ${a.aiSummary.replace(/</g,'&lt;')}</div>` : `<button onclick="generateAssetAiSummary_(assets.find(x=>x.id==='${a.id}'))" style="font-size:11px; padding:4px 8px; align-self:flex-start;">🤖 AI 요약 생성${a.type==='video' && !youtubeVideoId_(a.url) ? ' (설명/메모 기반)' : ''}</button>`}
         <input value="${(a.name||'').replace(/"/g,'&quot;')}" placeholder="이름" onchange="updateAssetField('${a.id}','name',this.value)">
         <input value="${(a.tags||[]).join(', ').replace(/"/g,'&quot;')}" placeholder="태그 (쉼표로 구분)" onchange="updateAssetField('${a.id}','tags',this.value)">
         <textarea rows="2" placeholder="설명/메모 (참고용)" onchange="updateAssetField('${a.id}','description',this.value)">${(a.description||'').replace(/</g,'&lt;')}</textarea>
@@ -2255,6 +2470,39 @@ function deleteScheduleTaskFromPanel() {
   closeSchedulePanel();
   deleteScheduleTask(id);
 }
+// 표준 시나리오(critical path 계산) 기준으로 작업들을 가로 막대 타임라인으로 보여준다.
+// 실제 달력 날짜가 아니라 "프로젝트 시작을 0일로 뒀을 때의 상대적인 날짜(D+n)" 기준입니다.
+function renderScheduleGantt() {
+  const el = document.getElementById('scheduleGanttView');
+  if (!el) return;
+  const filterSel = document.getElementById('scheduleProjectFilter');
+  const filter = filterSel ? filterSel.value : '';
+  const rows = scheduleTasks.filter(t => !filter || t.project === filter);
+  if (!rows.length) { el.innerHTML = `<div class="empty-state">표시할 작업이 없습니다.</div>`; return; }
+  let cp;
+  try { cp = schedCriticalPath(rows, 'standard'); } catch (e) {
+    el.innerHTML = `<div class="empty-state">선행 작업 설정에 순환 참조가 있어 타임라인을 계산할 수 없습니다.</div>`;
+    return;
+  }
+  const perTask = cp.perTask;
+  const maxDay = Math.max(1, cp.totalDurationDays);
+  const sorted = rows.slice().sort((a, b) => ((perTask[a.id] || {}).earliestStart || 0) - ((perTask[b.id] || {}).earliestStart || 0));
+  el.innerHTML = `
+    <div style="font-size:11px; color:var(--text-muted); margin-bottom:10px;">전체 예상 소요 ${cp.totalDurationDays}일 (파트가 다르면 병렬로 겹쳐 진행 가능) · 붉은 막대는 병목(critical path) 작업 — 이 작업이 늦어지면 전체 일정이 그만큼 늦어집니다.</div>
+    ${sorted.map(t => {
+      const info = perTask[t.id] || { earliestStart: 0, earliestFinish: 0, durationDays: 0, onCriticalPath: false };
+      const leftPct = (info.earliestStart / maxDay) * 100;
+      const widthPct = Math.max(1.5, (info.durationDays / maxDay) * 100);
+      return `<div style="display:flex; align-items:center; gap:8px; margin-bottom:7px;">
+        <div style="width:140px; font-size:12px; flex-shrink:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="${(t.name||'').replace(/"/g,'&quot;')}">${t.name || '(이름 없음)'}</div>
+        <div style="flex:1; position:relative; height:18px; background:var(--surface-2); border-radius:4px;">
+          <div style="position:absolute; left:${leftPct}%; width:${widthPct}%; height:100%; border-radius:4px; background:${info.onCriticalPath ? 'var(--critical)' : 'var(--series-1)'};" title="D+${Math.round(info.earliestStart)} ~ D+${Math.round(info.earliestFinish)} (${info.durationDays}일)"></div>
+        </div>
+        <div style="width:64px; font-size:11px; color:var(--text-muted); text-align:right; flex-shrink:0;">${info.durationDays}일</div>
+      </div>`;
+    }).join('')}
+  `;
+}
 function renderScheduleTasks() {
   const filterSel = document.getElementById('scheduleProjectFilter');
   if (filterSel) {
@@ -2317,6 +2565,7 @@ function renderScheduleTasks() {
       </table>
     </div>`;
   }).join('');
+  renderScheduleGantt();
   refreshScheduleResults();
   queueAutoSave();
 }
@@ -2362,7 +2611,7 @@ function refreshScheduleResults() {
 }
 // ---------- 내보내기 / 가져오기 ----------
 function exportData() {
-  const blob = new Blob([JSON.stringify({projects, aiTasks, idCounter, scheduleTasks, scheduleIdCounter, assets}, null, 2)], {type: 'application/json'});
+  const blob = new Blob([JSON.stringify({projects, aiTasks, idCounter, scheduleTasks, scheduleIdCounter, assets, activityLog}, null, 2)], {type: 'application/json'});
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
@@ -2385,6 +2634,7 @@ function importData(evt) {
       scheduleTasks = (data.scheduleTasks || []).map(t => ({...t, updatedAt: now}));
       scheduleIdCounter = data.scheduleIdCounter || 1;
       assets = (data.assets || []).map(a => ({...a, updatedAt: now}));
+      activityLog = (data.activityLog || []).map(l => ({...l, updatedAt: now}));
       renderAll();
       queueAutoSave();
       showToast('데이터를 불러왔습니다');
@@ -2433,6 +2683,8 @@ function finishOnboardingTour() {
 function skipOnboardingTour() { finishOnboardingTour(); }
 // 초기 렌더 - 로그인/실시간 리스너가 붙기 전까지는 빈 화면이며, authGate가 화면을 가리고 있음.
 renderAll();
+// 탭을 켜놓은 채 오래 두어도(다른 사람의 변경 없이) 마감 임박 알림은 계속 체크되도록 주기적으로도 확인한다.
+setInterval(() => { if (currentUser) maybeNotifyDeadlines_(); }, 10 * 60 * 1000);
 </script>
 </body>
 </html>
