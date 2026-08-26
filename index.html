@@ -2841,8 +2841,45 @@ function initClipboardImagePaste_() {
     const transfer = new DataTransfer();
     files.forEach(f => transfer.items.add(f));
     document.getElementById('as-imagefile').files = transfer.files;
-    showToast(`클립보드 이미지 ${files.length}장을 붙여넣었습니다 — 이름/태그 입력 후 저장하세요`);
+    // 이미지 1장을 붙여넣었으면(가장 흔한 케이스 — 스크린샷 복사) 저장 버튼을 누르기 전에 미리 AI가
+    // 분석해서 이름/태그/설명 입력칸을 바로 채워준다 — 사용자는 채워진 값을 확인·수정만 하고 저장하면 됨.
+    // 여러 장을 한꺼번에 붙여넣으면 모달의 이름/태그/설명 입력칸이 자료 전체에 공용이라 미리 채우면
+    // 오히려 헷갈리므로, 그 경우는 기존처럼 저장할 때 자료별로 각각 분석한다.
+    if (files.length === 1) {
+      analyzePastedImageIntoModalForm_(files[0]);
+      showToast('클립보드 이미지를 붙여넣었습니다 — AI가 이름·태그·설명을 채우는 중…');
+    } else {
+      showToast(`클립보드 이미지 ${files.length}장을 붙여넣었습니다 — 저장하면 각 이미지가 자동으로 분석됩니다`);
+    }
   });
+}
+// 붙여넣기 시점에 미리 분석한 결과를 기억해뒀다가, 저장할 때 같은 파일이면 재사용한다(같은 이미지를
+// AI에게 두 번 보내면 안 그래도 빠듯한 Groq 분당 토큰 한도(TPM)만 두 배로 까먹으니 — 이름/태그/설명은
+// 붙여넣을 때 이미 채웠고, 저장할 때 카드에 들어갈 AI 요약(aiSummary)도 이 결과의 summary를 그대로 쓴다).
+let pastedImageAnalysisCache_ = null; // {file, result}
+// 자료 등록 모달에 이미지 1장을 붙여넣었을 때, 저장 전에 미리 AI로 분석해서 이름/태그/설명 입력칸을 채운다.
+// "AI 자동 정리" 체크가 꺼져있으면(사용자가 원치 않는 경우) 건드리지 않는다. 이미 값이 있는 필드는
+// (분석 도중 사용자가 직접 타이핑했을 수도 있으니) 덮어쓰지 않고 비어있는 필드만 채운다.
+function analyzePastedImageIntoModalForm_(file) {
+  pastedImageAnalysisCache_ = null;
+  const aiCheckEl = document.getElementById('as-ai-summarize');
+  if (!aiCheckEl || !aiCheckEl.checked) return Promise.resolve();
+  const nameEl = document.getElementById('as-name');
+  const tagsEl = document.getElementById('as-tags');
+  const descEl = document.getElementById('as-description');
+  return resizeImageFile_(file)
+    .then(({ dataUrl }) => analyzeImageWithAi_(dataUrl))
+    .then(result => {
+      pastedImageAnalysisCache_ = { file, result };
+      // 분석하는 사이 모달이 닫혔거나 다른 자료 유형으로 바뀌었으면 반영하지 않는다.
+      if (!document.getElementById('assetModalBackdrop').classList.contains('active')) return;
+      if (document.getElementById('as-type').value !== 'image') return;
+      if (!nameEl.value.trim() && result.name) nameEl.value = result.name;
+      if (!tagsEl.value.trim() && result.tags.length) tagsEl.value = result.tags.join(', ');
+      if (!descEl.value.trim() && result.description) descEl.value = result.description;
+      showToast('✅ AI가 이름·태그·설명을 채웠습니다 — 확인 후 저장하세요');
+    })
+    .catch(err => showToast('⚠️ 이미지 분석에 실패했습니다: ' + err.message));
 }
 // 이미지를 AI(비전 모델)에게 보내서 이름/태그/한줄요약/설명을 한 번에 JSON으로 받아온다.
 // 이미지 업로드(모달)와 AI 채팅 붙여넣기 두 경로에서 공통으로 쓰는 헬퍼.
@@ -2923,6 +2960,7 @@ function registerAiChatImageAsAsset_(file) {
   });
 }
 function openAssetModal() {
+  pastedImageAnalysisCache_ = null; // 이전에 열었을 때 붙여넣어 분석해둔 결과는 새로 열면 더 이상 유효하지 않음
   document.getElementById('as-type').value = 'image';
   document.getElementById('as-name').value = '';
   document.getElementById('as-imagefile').value = '';
@@ -3008,12 +3046,27 @@ function saveAssetFromModal() {
     }).catch(() => showToast(`"${file.name}" 이미지를 처리하지 못했습니다`))
   )).then(() => {
     finishAssetSave_();
-    if (wantAiSummary) {
+    // 붙여넣기 시점에 이미 이 이미지를 분석해뒀으면(analyzePastedImageIntoModalForm_), 저장할 때 같은
+    // 이미지를 AI에게 또 보내지 않고 그 결과를 그대로 재사용한다(API 호출/Groq 토큰 한도 절약).
+    const reuseCached = files.length === 1 && newImageAssets.length === 1 &&
+      pastedImageAnalysisCache_ && pastedImageAnalysisCache_.file === files[0];
+    if (wantAiSummary && reuseCached) {
+      const asset = newImageAssets[0];
+      const cached = pastedImageAnalysisCache_.result;
+      asset.aiSummary = cached.summary;
+      if (!asset.name || !asset.name.trim()) asset.name = cached.name || fallbackNames_[asset.id] || '';
+      if (!(asset.tags && asset.tags.length) && cached.tags.length) asset.tags = cached.tags;
+      if (!(asset.description && asset.description.trim()) && cached.description) asset.description = cached.description;
+      asset.updatedAt = Date.now();
+      renderAssets();
+      queueAutoSave();
+    } else if (wantAiSummary) {
       newImageAssets.slice(0, IMAGE_AI_SUMMARY_LIMIT).forEach(a => applyAiImageAnalysis_(a, fallbackNames_[a.id]));
       if (newImageAssets.length > IMAGE_AI_SUMMARY_LIMIT) {
         showToast(`이미지 ${IMAGE_AI_SUMMARY_LIMIT}장까지만 자동 분석을 실행했습니다`);
       }
     }
+    pastedImageAnalysisCache_ = null; // 소비했든 안 했든, 다음 저장에서 잘못 재사용되지 않도록 비워둠
   });
 }
 function finishAssetSave_() {
