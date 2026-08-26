@@ -271,6 +271,7 @@
   .ai-msg { font-size: 12.5px; line-height: 1.5; white-space: pre-wrap; padding: 8px 11px; border-radius: 10px; max-width: 88%; word-break: break-word; }
   .ai-msg.user { align-self: flex-end; background: var(--text-primary); color: var(--surface-1); border-bottom-right-radius: 3px; }
   .ai-msg.assistant { align-self: flex-start; background: var(--surface-1); color: var(--text-secondary); border: 1px solid var(--border); border-bottom-left-radius: 3px; }
+  .ai-msg .ai-msg-thumb { max-width: 100%; max-height: 160px; border-radius: 8px; display: block; margin-top: 6px; object-fit: cover; }
   /* ---------- 자료 보관함 서브탭 (이미지/영상링크/프롬프트 분리) ---------- */
   .asset-subtab-btn { padding: 8px 14px; border-radius: 20px; border: 1px solid var(--border); background: var(--surface-1); color: var(--text-secondary); font-size: 13px; font-weight: 600; cursor: pointer; }
   .asset-subtab-btn.active { background: var(--text-primary); color: var(--surface-1); border-color: var(--text-primary); }
@@ -917,7 +918,7 @@
     <h3>⠿ AI 어시스턴트</h3>
     <button type="button" onclick="clearAiChat()" style="font-size:11px; padding:3px 8px;">대화 지우기</button>
   </div>
-  <div style="font-size:11px; color:var(--text-muted);">현재 등록된 프로젝트·작업·자료 데이터를 참고해서 답변합니다. "OO 프로젝트 담당자 OO로 추가해줘", "OO 작업 완료로 바꿔줘" 처럼 요청하면 실제로 프로젝트/작업을 추가·수정해줘요(삭제는 지원하지 않음) — 반영된 후에는 화면에서 한 번 확인해 주세요.</div>
+  <div style="font-size:11px; color:var(--text-muted);">현재 등록된 프로젝트·작업·자료 데이터를 참고해서 답변합니다. "OO 프로젝트 담당자 OO로 추가해줘", "OO 작업 완료로 바꿔줘" 처럼 요청하면 실제로 프로젝트/작업을 추가·수정해줘요(삭제는 지원하지 않음) — 반영된 후에는 화면에서 한 번 확인해 주세요.<br>💡 이미지를 복사한 뒤 여기에 Ctrl+V 하면, AI가 내용을 분석해서 이름·태그를 붙여 자료 보관함(이미지)에 자동으로 등록해줘요.</div>
   <div style="display:flex; gap:6px; flex-wrap:wrap;">
     <button type="button" onclick="askAiQuickSummary('inprogress')" style="font-size:11px; padding:5px 9px;">진행 중 프로젝트 요약</button>
     <button type="button" onclick="askAiQuickSummary('deadline')" style="font-size:11px; padding:5px 9px;">마감 임박 순 정리</button>
@@ -2184,7 +2185,7 @@ function renderAiChat() {
     return;
   }
   log.innerHTML = aiChatHistory.map(m =>
-    `<div class="ai-msg ${m.role === 'user' ? 'user' : 'assistant'}">${(m.content || '').replace(/</g, '&lt;').replace(/\n/g, '<br>')}</div>`
+    `<div class="ai-msg ${m.role === 'user' ? 'user' : 'assistant'}">${(m.content || '').replace(/</g, '&lt;').replace(/\n/g, '<br>')}${m.image ? `<img class="ai-msg-thumb" src="${m.image}" alt="붙여넣은 이미지">` : ''}</div>`
   ).join('');
 }
 function scrollAiChatToBottom_() {
@@ -2700,8 +2701,19 @@ function initClipboardImagePaste_() {
     const files = imageItems.map(it => it.getAsFile()).filter(Boolean);
     if (!files.length) return;
     e.preventDefault();
+    // 자료 등록 모달이 이미 열려있으면(사용자가 명시적으로 그 폼을 쓰는 중) 기존 방식 그대로 채워준다.
     const backdrop = document.getElementById('assetModalBackdrop');
-    if (!backdrop.classList.contains('active')) {
+    const assetModalOpen = backdrop.classList.contains('active');
+    if (!assetModalOpen) {
+      // AI 입력 패널이 열려있는 상태로 이미지를 붙여넣으면, 모달을 거치지 않고
+      // AI가 곧바로 이미지를 분석해서 자료 보관함(이미지)에 자동 등록한다.
+      const aiPanel = document.getElementById('aiPanel');
+      if (aiPanel && aiPanel.classList.contains('active')) {
+        handleAiChatImagePaste_(files);
+        return;
+      }
+    }
+    if (!assetModalOpen) {
       openAssetModal(); // 모달이 닫혀있었다면 자동으로 열어준다 (기본 유형이 '이미지'라 바로 이어서 붙여넣기 가능)
     } else if (document.getElementById('as-type').value !== 'image') {
       document.getElementById('as-type').value = 'image';
@@ -2711,6 +2723,68 @@ function initClipboardImagePaste_() {
     files.forEach(f => transfer.items.add(f));
     document.getElementById('as-imagefile').files = transfer.files;
     showToast(`클립보드 이미지 ${files.length}장을 붙여넣었습니다 — 이름/태그 입력 후 저장하세요`);
+  });
+}
+// AI 입력 패널에 이미지를 붙여넣었을 때: 모달 없이 곧바로 AI 분석 → 자료 보관함(이미지) 자동 등록.
+// 한 번에 여러 장이 붙여넣어져도(예: 스크린샷 여러 장 복사) 각각 독립적으로 처리한다.
+const AI_CHAT_PASTE_LIMIT_ = 3; // AI 호출이 한 번에 몰리는 것을 막기 위한 상한
+function handleAiChatImagePaste_(files) {
+  const panel = document.getElementById('aiPanel');
+  if (!panel.classList.contains('active')) toggleAiPanel();
+  const toProcess = files.slice(0, AI_CHAT_PASTE_LIMIT_);
+  toProcess.forEach(file => registerAiChatImageAsAsset_(file));
+  if (files.length > AI_CHAT_PASTE_LIMIT_) {
+    showToast(`이미지 ${AI_CHAT_PASTE_LIMIT_}장까지만 자동으로 분석·등록했습니다`);
+  }
+}
+// 이미지 한 장을 AI로 분석해서(이름/태그/한줄요약) 자료 보관함에 이미지 자료로 자동 등록한다.
+function registerAiChatImageAsAsset_(file) {
+  const previewUrl = URL.createObjectURL(file);
+  aiChatHistory.push({ role: 'user', content: '🖼️ 이미지를 붙여넣었습니다 — AI가 분석해서 자료 보관함에 등록할게요.', image: previewUrl });
+  renderAiChat();
+  scrollAiChatToBottom_();
+  setAiTyping_(true);
+  resizeImageFile_(file).then(({ dataUrl, blob, width, height }) => {
+    const id = genId_('a');
+    const prompt = '이 이미지를 우리 팀 자료 보관함에 등록하려고 해. 다음 JSON 형식으로만, 다른 설명 없이 답해줘:\n{"name": "20자 내외 한국어 이름", "tags": ["태그1", "태그2", "태그3"], "summary": "25자 내외 한국어 한 줄 요약"}\n이미지 속 인물/장소/오브젝트/스타일/분위기가 드러나면 태그에 포함해줘.';
+    return fetch(AI_PROXY_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text: prompt, image: dataUrl }),
+    })
+      .then(r => r.json())
+      .then(data => {
+        if (data.error) throw new Error(data.error);
+        let parsed = null;
+        try {
+          const m = (data.reply || '').match(/\{[\s\S]*\}/);
+          if (m) parsed = JSON.parse(m[0]);
+        } catch (e) { parsed = null; }
+        const name = (parsed && parsed.name && String(parsed.name).trim()) || `붙여넣은 이미지 (${new Date().toLocaleString('ko-KR')})`;
+        const tags = (parsed && Array.isArray(parsed.tags)) ? parsed.tags.map(t => String(t).trim()).filter(Boolean) : [];
+        const summary = (parsed && parsed.summary && String(parsed.summary).trim()) || (data.reply || '').trim();
+        return uploadAssetImageToStorage_(id, dataUrl).then(url => {
+          const asset = {
+            id, type: 'image', name, tags, projects: [], linkedPrompts: [], width, height, description: '',
+            sizeKB: Math.round(((url ? blob.size : dataUrl.length * 0.75)) / 1024),
+            aiSummary: summary,
+            updatedAt: Date.now(),
+          };
+          if (url) asset.url = url; else asset.dataUrl = dataUrl;
+          assets.push(asset);
+          renderAssets();
+          queueAutoSave();
+          setAiTyping_(false);
+          aiChatHistory.push({ role: 'assistant', content: `✅ 자료 보관함에 이미지로 등록했습니다: "${name}"${tags.length ? ' (태그: ' + tags.join(', ') + ')' : ''}\n${summary}` });
+          renderAiChat();
+          scrollAiChatToBottom_();
+        });
+      });
+  }).catch(err => {
+    setAiTyping_(false);
+    aiChatHistory.push({ role: 'assistant', content: '⚠️ 이미지 분석/등록에 실패했습니다: ' + err.message });
+    renderAiChat();
+    scrollAiChatToBottom_();
   });
 }
 function openAssetModal() {
