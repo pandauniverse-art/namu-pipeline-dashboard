@@ -865,7 +865,12 @@ function assigneePillClass(v) { return ASSIGNEE_PILL_CLASS[v] || 'pending'; }
 let projects = [];
 let aiTasks = [];
 let assets = []; // 자료 보관함: 레퍼런스/AI 학습용 이미지 등
-let idCounter = 1;
+let idCounter = 1; // 더 이상 ID 생성에 쓰이지 않음(레거시 백업 파일 호환용으로만 유지) — 실제 ID는 genId_()로 생성
+// 새로고침 시 카운터가 1부터 다시 시작되면서 기존 자료와 같은 ID가 생겨 덮어써지는 문제가 있었음.
+// 그래서 ID는 시간값+임의값 조합으로 생성해 충돌 가능성을 사실상 없앤다.
+function genId_(prefix) {
+  return prefix + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+}
 
 // ---------- Firebase (Firestore 실시간 동기화 + 로그인) ----------
 const firebaseConfig = {
@@ -1295,7 +1300,7 @@ function saveProject() {
     const p = projects.find(x => x.id === id);
     Object.assign(p, data, {updatedAt: Date.now()});
   } else {
-    projects.push({id: 'p' + (idCounter++), blockedStages: [], ...data, updatedAt: Date.now()});
+    projects.push({id: genId_('p'), blockedStages: [], ...data, updatedAt: Date.now()});
   }
   closeProjectModal();
   renderAll();
@@ -1356,7 +1361,7 @@ function saveTask() {
   const title = document.getElementById('t-title').value.trim();
   if (!title) { showToast('작업명을 입력하세요'); return; }
   aiTasks.push({
-    id: 't' + (idCounter++),
+    id: genId_('t'),
     title,
     project: document.getElementById('t-project').value,
     type: document.getElementById('t-type').value,
@@ -1674,14 +1679,14 @@ function saveAssetFromModal() {
   if (type === 'video') {
     const url = document.getElementById('as-videourl').value.trim();
     if (!url) { showToast('영상 링크를 입력하세요'); return; }
-    assets.push({id: 'a' + (idCounter++), type: 'video', name: name || url, tags, projects: linkedProjects, url, updatedAt: Date.now()});
+    assets.push({id: genId_('a'), type: 'video', name: name || url, tags, projects: linkedProjects, url, updatedAt: Date.now()});
     finishAssetSave_();
     return;
   }
   if (type === 'prompt') {
     const text = document.getElementById('as-prompttext').value.trim();
     if (!text) { showToast('프롬프트 내용을 입력하세요'); return; }
-    assets.push({id: 'a' + (idCounter++), type: 'prompt', name: name || text.slice(0, 30), tags, projects: linkedProjects, text, updatedAt: Date.now()});
+    assets.push({id: genId_('a'), type: 'prompt', name: name || text.slice(0, 30), tags, projects: linkedProjects, text, updatedAt: Date.now()});
     finishAssetSave_();
     return;
   }
@@ -1691,7 +1696,7 @@ function saveAssetFromModal() {
   Promise.all(files.map((file, i) =>
     resizeImageFile_(file).then(({dataUrl, width, height}) => {
       assets.push({
-        id: 'a' + (idCounter++),
+        id: genId_('a'),
         type: 'image',
         name: files.length > 1 ? `${name || file.name.replace(/\.[^.]+$/, '')} (${i + 1})` : (name || file.name.replace(/\.[^.]+$/, '')),
         tags, projects: linkedProjects,
@@ -1825,7 +1830,7 @@ function updateScheduleField(id, field, value) {
 }
 
 function addScheduleTask(part) {
-  const id = 'st' + (scheduleIdCounter++);
+  const id = genId_('st');
   scheduleTasks.push({
     id, name: '새 작업', project: '', workType: SCHED_PART_DEFAULT_TYPE[part] || '기획',
     difficulty: 'Medium', skill: 'mid', workers: 1, utilization: 1,
