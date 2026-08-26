@@ -209,6 +209,13 @@
   .toast { position: fixed; bottom: 20px; right: 20px; background: var(--text-primary); color: var(--surface-1); padding: 10px 16px; border-radius: 8px; font-size: 13px; opacity: 0; transform: translateY(8px); transition: all 0.25s; z-index: 100; }
   .toast.show { opacity: 1; transform: translateY(0); }
   .note-box { font-size: 12px; color: var(--text-muted); border: 1px dashed var(--border); border-radius: 6px; padding: 10px 12px; margin-top: 16px; }
+  /* 이미지 확대보기(라이트박스) */
+  .lightbox-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,0.82); display: none; align-items: center; justify-content: center; flex-direction: column; z-index: 300; padding: 40px 20px; cursor: zoom-out; }
+  .lightbox-backdrop.active { display: flex; }
+  .lightbox-img { max-width: 100%; max-height: calc(100vh - 120px); object-fit: contain; border-radius: 4px; box-shadow: 0 8px 40px rgba(0,0,0,0.5); cursor: default; }
+  .lightbox-caption { color: #fff; font-size: 13px; margin-top: 12px; text-align: center; max-width: 80vw; }
+  .lightbox-close-btn { position: absolute; top: 16px; right: 20px; background: rgba(255,255,255,0.12); color: #fff; border: none; border-radius: 50%; width: 36px; height: 36px; font-size: 16px; cursor: pointer; display: flex; align-items: center; justify-content: center; }
+  .lightbox-close-btn:hover { background: rgba(255,255,255,0.22); }
   /* ---------- 자료 보관함 ---------- */
   .asset-card { background: var(--surface-1); border: 1px solid var(--border); border-radius: 8px; overflow: hidden; display: flex; flex-direction: column; }
   .asset-thumb { width: 100%; aspect-ratio: 1 / 1; object-fit: cover; background: var(--grid); display: block; cursor: pointer; }
@@ -935,6 +942,12 @@
   </div>
 </div>
 <div class="toast" id="toast"></div>
+<!-- ---------- 이미지 확대보기(라이트박스): 자료 보관함/AI 채팅의 이미지를 클릭하면 새 탭 대신 화면 안에서 확대해서 본다 ---------- -->
+<div class="lightbox-backdrop" id="imageLightboxBackdrop" onclick="if (event.target === this) closeImageLightbox_()">
+  <button type="button" class="lightbox-close-btn" onclick="closeImageLightbox_()" aria-label="닫기">✕</button>
+  <img id="imageLightboxImg" class="lightbox-img" src="" alt="">
+  <div id="imageLightboxCaption" class="lightbox-caption"></div>
+</div>
 <!-- ---------- 첫 로그인 온보딩 투어 (스킵 가능, localStorage로 재노출 방지) ---------- -->
 <div class="onboarding-backdrop" id="onboardingBackdrop">
   <div class="onboarding-card">
@@ -2189,7 +2202,7 @@ function renderAiChat() {
     return;
   }
   log.innerHTML = aiChatHistory.map(m =>
-    `<div class="ai-msg ${m.role === 'user' ? 'user' : 'assistant'}">${(m.content || '').replace(/</g, '&lt;').replace(/\n/g, '<br>')}${m.image ? `<img class="ai-msg-thumb" src="${m.image}" alt="붙여넣은 이미지">` : ''}</div>`
+    `<div class="ai-msg ${m.role === 'user' ? 'user' : 'assistant'}">${(m.content || '').replace(/</g, '&lt;').replace(/\n/g, '<br>')}${m.image ? `<img class="ai-msg-thumb" src="${m.image}" alt="붙여넣은 이미지" style="cursor:pointer;" onclick="openImageLightbox_('${m.image.replace(/'/g, "\\'")}', '')">` : ''}</div>`
   ).join('');
 }
 function scrollAiChatToBottom_() {
@@ -2559,10 +2572,20 @@ function applyAiAction_(action) {
         : assets.filter(a => a.type === 'image' && (a.name || '').toLowerCase().includes(rawMatch.toLowerCase()));
       if (!targets.length) return { ok: false, message: wantsAll ? '⚠️ 분석할 이미지가 없습니다.' : `⚠️ "${action.match}"과(와) 일치하는 이미지를 찾지 못했습니다.` };
       const toProcess = targets.slice(0, ANALYZE_ASSET_IMAGE_LIMIT);
-      toProcess.forEach(imgAsset => applyAiImageAnalysis_(imgAsset, imgAsset.name)); // 백그라운드로 실제 분석이 진행되고, 끝나면 알아서 화면/저장에 반영됨
+      // applyAiImageAnalysis_()가 반환하는 프로미스를 모아뒀다가(pending), 전부 끝나면 채팅 메시지를
+      // "진행중" → "진행완료"로 같은 말풍선 안에서 바꿔치기한다(submitAiInput()에서 처리). 지금까지는
+      // "분석하고 있어요"라고만 말하고 실제로 끝났는지 채팅에서 알려주지 않아서, 몇 장이 끝났는지/다 끝났는지를
+      // 사용자가 자료 보관함을 직접 열어봐야만 알 수 있었다.
+      const analysisPromises = toProcess.map(imgAsset => applyAiImageAnalysis_(imgAsset, imgAsset.name));
       const remaining = targets.length - toProcess.length;
       const names = toProcess.map(a => `"${a.name}"`).join(', ');
-      return { ok: true, message: `🔎 이미지 ${toProcess.length}장(${names})을 실제로 열어서 분석하고 있어요 — 잠시 후 화면에 반영됩니다.${remaining ? ` (나머지 ${remaining}장은 이번엔 처리하지 않았어요. "나머지도 분석해줘"라고 다시 요청해주세요.)` : ''}` };
+      const remainingNote = remaining ? ` (나머지 ${remaining}장은 이번엔 처리하지 않았어요. "나머지도 분석해줘"라고 다시 요청해주세요.)` : '';
+      return {
+        ok: true,
+        message: `⏳ [진행중] 이미지 ${toProcess.length}장(${names})을 실제로 열어서 분석하고 있어요.${remainingNote}`,
+        pending: analysisPromises,
+        doneMessage: `✅ [진행완료] 이미지 ${toProcess.length}장(${names}) 분석을 마치고 이름·태그·요약을 화면에 반영했습니다.${remainingNote}`,
+      };
     }
     if (action.action === 'add_schedule_task') {
       if (!action.name || !String(action.name).trim()) {
@@ -2688,13 +2711,27 @@ function submitAiInput() {
       const raw = data.reply || '(응답 없음)';
       const { cleanText, action } = extractAiAction_(raw);
       let displayText = cleanText || raw;
+      let actionResult = null;
       if (action) {
-        const result = applyAiAction_(action);
-        if (result.message) displayText += (displayText ? '\n\n' : '') + result.message;
+        actionResult = applyAiAction_(action);
+        if (actionResult.message) displayText += (displayText ? '\n\n' : '') + actionResult.message;
       }
-      aiChatHistory.push({ role: 'assistant', content: displayText });
+      const assistantMsg = { role: 'assistant', content: displayText };
+      aiChatHistory.push(assistantMsg);
       renderAiChat();
       scrollAiChatToBottom_();
+      // analyze_asset_image처럼 백그라운드로 계속 진행되는 액션은, 처음엔 "[진행중]"이라고만 답하고
+      // 채팅에서는 그걸로 끝이었다 — 실제로 다 끝났는지는 자료 보관함을 직접 열어봐야 알 수 있었음.
+      // 여기서 pending(진행 중인 프로미스들)이 다 끝나길 기다렸다가, 같은 말풍선을 "[진행완료]"로 바꿔치기한다.
+      if (actionResult && actionResult.pending && actionResult.pending.length) {
+        Promise.allSettled(actionResult.pending).then(() => {
+          if (actionResult.doneMessage) {
+            assistantMsg.content = assistantMsg.content.replace(actionResult.message, actionResult.doneMessage);
+          }
+          renderAiChat();
+          scrollAiChatToBottom_();
+        });
+      }
     })
     .catch(err => {
       setAiTyping_(false);
@@ -2989,12 +3026,14 @@ function finishAssetSave_() {
 // "🤖 AI 요약 생성" 버튼을 눌렀을 때 둘 다 이 함수를 탄다.
 // 이름/태그/설명은 이미 값이 있으면(사용자가 직접 입력해둔 경우) 덮어쓰지 않고, 비어있는 항목만 채운다.
 // 요약(aiSummary)만 항상 최신 분석 결과로 갱신한다. fallbackName은 AI가 이름을 못 주거나 실패했을 때 대신 쓴다.
+// 반환하는 프로미스는 채팅 쪽(analyze_asset_image 액션)에서 "여러 장 분석이 전부 끝났는지"를 기다렸다가
+// 채팅 말풍선을 진행중→진행완료로 바꾸는 데 쓰인다. 기존 호출부(모달 업로드, 버튼)는 반환값을 안 써도 무방.
 function applyAiImageAnalysis_(asset, fallbackName) {
   asset.aiSummary = 'AI 분석 중…';
   renderAssets();
   const imageRef = asset.dataUrl || asset.url;
-  if (!imageRef) { asset.aiSummary = ''; renderAssets(); return; }
-  analyzeImageWithAi_(imageRef).then(result => {
+  if (!imageRef) { asset.aiSummary = ''; renderAssets(); return Promise.resolve(); }
+  return analyzeImageWithAi_(imageRef).then(result => {
     if (!assets.includes(asset)) return; // 그 사이 삭제됐으면 무시
     asset.aiSummary = result.summary;
     if (!asset.name || !asset.name.trim()) asset.name = result.name || fallbackName || '';
@@ -3165,12 +3204,29 @@ function youtubeVideoId_(url) {
   const m = String(url).match(/(?:youtube\.com\/(?:watch\?v=|shorts\/|embed\/)|youtu\.be\/)([A-Za-z0-9_-]{11})/);
   return m ? m[1] : null;
 }
+// 이미지를 클릭하면 새 탭으로 열지 않고 화면 안에서 확대해서 보여준다(자료 보관함 썸네일, 연결된 이미지 줄,
+// AI 채팅에 붙여넣은 이미지 등 어디서든 공통으로 씀). 배경(어두운 영역) 클릭이나 닫기 버튼, Esc 키로 닫힌다.
+function openImageLightbox_(src, caption) {
+  if (!src) return;
+  const backdrop = document.getElementById('imageLightboxBackdrop');
+  document.getElementById('imageLightboxImg').src = src;
+  document.getElementById('imageLightboxCaption').textContent = caption || '';
+  backdrop.classList.add('active');
+}
+function closeImageLightbox_() {
+  const backdrop = document.getElementById('imageLightboxBackdrop');
+  backdrop.classList.remove('active');
+  document.getElementById('imageLightboxImg').src = '';
+}
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape' && document.getElementById('imageLightboxBackdrop').classList.contains('active')) closeImageLightbox_();
+});
 function assetThumbHTML_(a) {
   if (a.type === 'image') {
     // url(GitHub 저장소 + jsDelivr CDN) 우선, 옛날에 저장된 자료는 dataUrl로 폴백. loading="lazy"라서 실제 화면에 스크롤되어 보일 때만
     // 브라우저가 이미지를 내려받는다 — 이미지가 많아져도 자료 목록 자체는 가볍게 유지된다.
     const src = a.url || a.dataUrl || '';
-    return `<img class="asset-thumb" src="${src}" loading="lazy" onclick="window.open('${src.replace(/'/g, "\\'")}', '_blank')">`;
+    return `<img class="asset-thumb" src="${src}" loading="lazy" onclick="openImageLightbox_('${src.replace(/'/g, "\\'")}', '${(a.name||'').replace(/'/g, "\\'").replace(/</g,'&lt;')}')">`;
   }
   if (a.type === 'video') {
     const ytId = youtubeVideoId_(a.url);
@@ -3187,7 +3243,7 @@ function renderLinkedImagesStrip_(promptId) {
   if (!linked.length) return '';
   return `<div style="display:flex; gap:4px; overflow-x:auto; padding:2px 0;">${linked.map(img => {
     const src = img.url || img.dataUrl || '';
-    return `<img src="${src}" loading="lazy" title="${(img.name||'').replace(/"/g,'&quot;')}" style="width:44px; height:44px; object-fit:cover; border-radius:4px; flex-shrink:0; cursor:pointer;" onclick="window.open('${src.replace(/'/g,"\\'")}', '_blank')">`;
+    return `<img src="${src}" loading="lazy" title="${(img.name||'').replace(/"/g,'&quot;')}" style="width:44px; height:44px; object-fit:cover; border-radius:4px; flex-shrink:0; cursor:pointer;" onclick="openImageLightbox_('${src.replace(/'/g,"\\'")}', '${(img.name||'').replace(/'/g, "\\'").replace(/</g,'&lt;')}')">`;
   }).join('')}</div>`;
 }
 // ---------- 프롬프트 ↔ 이미지 연결 피커 (프롬프트 카드에서 "이미지 선택"을 누르면 이미지 라이브러리를 골라볼 수 있는 모달) ----------
