@@ -246,7 +246,8 @@
   .side-panel .rev-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
   .side-panel .rev-row label { font-size: 11px; }
   /* ---------- AI 입력 박스 (자연어로 프로젝트/작업 등록·수정) ---------- */
-  .ai-fab { position: fixed; bottom: 22px; right: 22px; z-index: 70; background: var(--text-primary); color: var(--surface-1); border: none; border-radius: 24px; padding: 12px 18px; font-size: 13px; font-weight: 700; cursor: pointer; box-shadow: 0 4px 14px rgba(0,0,0,0.2); display: flex; align-items: center; gap: 6px; }
+  .ai-fab { position: fixed; bottom: 22px; right: 22px; z-index: 70; background: var(--text-primary); color: var(--surface-1); border: none; border-radius: 24px; padding: 12px 18px; font-size: 13px; font-weight: 700; cursor: grab; box-shadow: 0 4px 14px rgba(0,0,0,0.2); display: flex; align-items: center; gap: 6px; touch-action: none; user-select: none; }
+  .ai-fab.dragging { cursor: grabbing; opacity: 0.85; }
   .ai-fab .badge-soon { background: var(--warning); color: #1a1400; font-size: 10px; font-weight: 800; border-radius: 10px; padding: 2px 7px; }
   .ai-panel .badge-soon-inline { display: inline-block; background: var(--warning); color: #1a1400; font-size: 11px; font-weight: 800; border-radius: 10px; padding: 2px 8px; margin-left: 6px; vertical-align: middle; }
   .onboarding-backdrop { position: fixed; inset: 0; z-index: 220; background: rgba(0,0,0,0.5); display: none; align-items: center; justify-content: center; padding: 20px; }
@@ -263,10 +264,23 @@
   .ai-panel.active { display: flex; }
   .ai-panel h3 { margin: 0; font-size: 14px; }
   .ai-panel textarea { width: 100%; font-size: 13px; resize: none; }
+  .ai-panel-header { cursor: grab; touch-action: none; user-select: none; }
+  .ai-panel-header.dragging { cursor: grabbing; }
+  .ai-panel-header .drag-hint { color: var(--text-muted); font-size: 11px; margin-right: 4px; }
   .ai-chat-log { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; background: var(--surface-2); border-radius: 8px; padding: 10px; }
   .ai-msg { font-size: 12.5px; line-height: 1.5; white-space: pre-wrap; padding: 8px 11px; border-radius: 10px; max-width: 88%; word-break: break-word; }
   .ai-msg.user { align-self: flex-end; background: var(--text-primary); color: var(--surface-1); border-bottom-right-radius: 3px; }
   .ai-msg.assistant { align-self: flex-start; background: var(--surface-1); color: var(--text-secondary); border: 1px solid var(--border); border-bottom-left-radius: 3px; }
+  /* ---------- 달력 뷰 ---------- */
+  .cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; }
+  .cal-dow { font-size: 11px; font-weight: 700; color: var(--text-muted); text-align: center; padding: 4px 0; }
+  .cal-cell { min-height: 84px; border: 1px solid var(--grid); border-radius: 6px; padding: 5px; display: flex; flex-direction: column; gap: 3px; background: var(--surface-1); }
+  .cal-cell.empty { background: transparent; border-color: transparent; }
+  .cal-cell.today { border-color: var(--text-primary); border-width: 2px; }
+  .cal-date { font-size: 11px; color: var(--text-muted); }
+  .cal-cell.today .cal-date { color: var(--text-primary); font-weight: 700; }
+  .cal-pill { font-size: 10.5px; padding: 2px 6px; border-radius: 6px; background: var(--series-1); color: #fff; cursor: pointer; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .cal-pill.risk { background: var(--critical); }
   /* ---------- 모바일 화면 최적화 ---------- */
   @media (max-width: 760px) {
     main { padding: 16px 12px 90px; }
@@ -292,6 +306,9 @@
     .filter-row select, .filter-row input[type="text"] { flex: 1 1 140px; min-width: 0; }
     .row-actions { flex-wrap: wrap; }
     #deadlineNotifyBar { flex-wrap: wrap; }
+    .cal-cell { min-height: 56px; padding: 3px; }
+    .cal-grid { gap: 3px; }
+    .cal-pill { font-size: 9.5px; padding: 1px 4px; }
   }
 </style>
 </head>
@@ -327,6 +344,7 @@
     <button class="tab-btn tab-more-btn" id="tabMoreBtn" onclick="toggleMoreMenu(event)">더보기 ▾</button>
     <div class="tab-more-menu" id="tabMoreMenu">
       <button class="tab-more-item" data-tab="schedule">일정 계산기</button>
+      <button class="tab-more-item" data-tab="calendar">달력</button>
       <button class="tab-more-item" data-tab="guide">파이프라인 가이드</button>
       <button class="tab-more-item" data-tab="report">리포트 · 자동화</button>
     </div>
@@ -668,6 +686,23 @@
     <div class="empty-state" id="assetEmpty" style="display:none">등록된 자료가 없습니다. '+ 자료 추가'로 시작하세요.</div>
     <div class="note-box" id="assetStorageNote" style="margin-top:16px;"></div>
   </section>
+  <!-- CALENDAR (실제 달력 날짜 기준 마감일 뷰) -->
+  <section class="tabpanel" id="tab-calendar">
+    <div class="note-box" style="margin-top:0; margin-bottom:16px;">
+      프로젝트의 <strong>마감일</strong>을 실제 달력 날짜 기준으로 볼 수 있는 뷰입니다. (일정 계산기의 타임라인은 상대적 D+n 기준이라, 실제 날짜가 필요할 때는 이 달력을 참고하세요.) 날짜 칸의 프로젝트를 누르면 바로 수정 화면이 열립니다.
+    </div>
+    <div class="filter-row" style="align-items:center; justify-content:space-between;">
+      <div style="display:flex; align-items:center; gap:8px;">
+        <button type="button" onclick="calendarShiftMonth(-1)">◀</button>
+        <h2 class="section-title" id="calendarMonthLabel" style="margin:0; min-width:110px; text-align:center;"></h2>
+        <button type="button" onclick="calendarShiftMonth(1)">▶</button>
+      </div>
+      <button type="button" onclick="calendarGoToday()">오늘</button>
+    </div>
+    <div class="card">
+      <div id="calendarGrid"></div>
+    </div>
+  </section>
   <!-- REPORT -->
   <section class="tabpanel" id="tab-report">
     <div class="card">
@@ -828,10 +863,10 @@
     </div>
   </div>
 </div>
-<button class="ai-fab" onclick="toggleAiPanel()">🤖 AI 입력</button>
+<button class="ai-fab" id="aiFab" onclick="toggleAiPanel()">🤖 AI 입력</button>
 <div class="ai-panel" id="aiPanel">
-  <div style="display:flex; align-items:center; justify-content:space-between;">
-    <h3>AI 어시스턴트</h3>
+  <div class="ai-panel-header" id="aiPanelHeader" style="display:flex; align-items:center; justify-content:space-between;">
+    <h3>⠿ AI 어시스턴트</h3>
     <button type="button" onclick="clearAiChat()" style="font-size:11px; padding:3px 8px;">대화 지우기</button>
   </div>
   <div style="font-size:11px; color:var(--text-muted);">현재 등록된 프로젝트·작업·자료 데이터를 참고해서 답변합니다. "OO 프로젝트 담당자 OO로 추가해줘", "OO 작업 완료로 바꿔줘" 처럼 요청하면 실제로 프로젝트/작업을 추가·수정해줘요(삭제는 지원하지 않음) — 반영된 후에는 화면에서 한 번 확인해 주세요.</div>
@@ -1222,7 +1257,7 @@ function schedFullEstimate(tasks) {
   return result;
 }
 // ---------- 탭 전환 (기본 탭 + '더보기' 드롭다운의 고급 탭) ----------
-const MORE_TAB_LABELS = { schedule: '일정 계산기', guide: '파이프라인 가이드', report: '리포트 · 자동화' };
+const MORE_TAB_LABELS = { schedule: '일정 계산기', calendar: '달력', guide: '파이프라인 가이드', report: '리포트 · 자동화' };
 const LAST_TAB_STORAGE_KEY = 'namu_pipeline_last_tab_v1';
 // 새로고침해도 보고 있던 탭이 그대로 유지되도록, 탭을 옮길 때마다 localStorage에 기록해둔다.
 function activateTab(tabName) {
@@ -1732,6 +1767,57 @@ function generateReport() {
   lines.push(risk.length ? risk.map(p => `- ${p.name}: ${p.blockedStages.length? ('보류 단계 존재' + (p.blockReason ? ' — ' + p.blockReason : '')) :'마감 임박'}`).join('\n') : '- 없음');
   document.getElementById('reportOutput').textContent = lines.join('\n');
 }
+// ---------- 달력 (실제 날짜 기준 마감일 뷰) ----------
+let calendarCursor = new Date();
+calendarCursor.setDate(1); // 항상 "그 달의 1일"을 기준으로 들고 있는다 (월말일 넘어가는 오류 방지)
+function calendarShiftMonth(delta) {
+  calendarCursor.setMonth(calendarCursor.getMonth() + delta);
+  renderCalendarView();
+}
+function calendarGoToday() {
+  calendarCursor = new Date();
+  calendarCursor.setDate(1);
+  renderCalendarView();
+}
+function calendarDateKey_(y, m, d) {
+  return `${y}-${String(m + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+}
+function renderCalendarView() {
+  const grid = document.getElementById('calendarGrid');
+  const label = document.getElementById('calendarMonthLabel');
+  if (!grid || !label) return;
+  const year = calendarCursor.getFullYear();
+  const month = calendarCursor.getMonth(); // 0-11
+  label.textContent = `${year}년 ${month + 1}월`;
+  // 마감일별로 프로젝트를 미리 묶어둔다 (YYYY-MM-DD -> 프로젝트[])
+  const byDate = {};
+  projects.forEach(p => {
+    if (!p.deadline) return;
+    (byDate[p.deadline] = byDate[p.deadline] || []).push(p);
+  });
+  const firstDow = new Date(year, month, 1).getDay(); // 0=일요일
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const todayKey = calendarDateKey_(new Date().getFullYear(), new Date().getMonth(), new Date().getDate());
+  const dowNames = ['일', '월', '화', '수', '목', '금', '토'];
+  let html = dowNames.map(d => `<div class="cal-dow">${d}</div>`).join('');
+  for (let i = 0; i < firstDow; i++) html += `<div class="cal-cell empty"></div>`;
+  for (let d = 1; d <= daysInMonth; d++) {
+    const key = calendarDateKey_(year, month, d);
+    const dayProjects = byDate[key] || [];
+    const isToday = key === todayKey;
+    html += `<div class="cal-cell${isToday ? ' today' : ''}">
+      <div class="cal-date">${d}</div>
+      ${dayProjects.map(p => {
+        const active = p.status !== '수주' && p.status !== '실주';
+        const d = daysUntil(p.deadline);
+        const risky = active && d !== null && d <= DEADLINE_ALERT_THRESHOLD;
+        return `<div class="cal-pill${risky ? ' risk' : ''}" title="${p.name} (${p.client||'-'})" onclick="openProjectModal('${p.id}')">${p.name}</div>`;
+      }).join('')}
+    </div>`;
+  }
+  grid.className = 'cal-grid';
+  grid.innerHTML = html;
+}
 function renderAll() {
   renderOverview();
   renderBoard();
@@ -1744,6 +1830,7 @@ function renderAll() {
   renderActivityLog();
   renderProfitability();
   renderClientHistory();
+  renderCalendarView();
 }
 // ---------- 파이프라인 가이드 (내부 교육/참고용) ----------
 function renderGuide() {
@@ -1767,6 +1854,95 @@ function renderGuide() {
     ${stageRow(phaseB)}
   `;
 }
+// ---------- AI 입력창 자유 이동(드래그) : FAB 버튼과 패널 헤더 모두 드래그로 위치를 옮길 수 있고, localStorage에 위치를 기억함 ----------
+function makeDraggable_(el, handleEl, storageKey, opts) {
+  opts = opts || {};
+  let dragging = false, moved = false, startX = 0, startY = 0, startLeft = 0, startTop = 0;
+  function clampPos(left, top) {
+    const rect = el.getBoundingClientRect();
+    const maxLeft = Math.max(4, window.innerWidth - rect.width - 4);
+    const maxTop = Math.max(4, window.innerHeight - rect.height - 4);
+    return { left: Math.min(Math.max(4, left), maxLeft), top: Math.min(Math.max(4, top), maxTop) };
+  }
+  function applyPos(left, top) {
+    el.style.left = left + 'px';
+    el.style.top = top + 'px';
+    el.style.right = 'auto';
+    el.style.bottom = 'auto';
+  }
+  function onPointerMove(e) {
+    if (!dragging) return;
+    const point = e.touches ? e.touches[0] : e;
+    const dx = point.clientX - startX, dy = point.clientY - startY;
+    if (Math.abs(dx) > 3 || Math.abs(dy) > 3) moved = true;
+    if (moved && e.cancelable) e.preventDefault();
+    const pos = clampPos(startLeft + dx, startTop + dy);
+    applyPos(pos.left, pos.top);
+  }
+  function onPointerUp() {
+    dragging = false;
+    handleEl.classList.remove('dragging');
+    document.removeEventListener('mousemove', onPointerMove);
+    document.removeEventListener('mouseup', onPointerUp);
+    document.removeEventListener('touchmove', onPointerMove);
+    document.removeEventListener('touchend', onPointerUp);
+    if (moved) {
+      try {
+        const rect = el.getBoundingClientRect();
+        localStorage.setItem(storageKey, JSON.stringify({ left: rect.left, top: rect.top }));
+      } catch (e) {}
+    }
+  }
+  function onPointerDown(e) {
+    if (opts.ignoreSelector && e.target.closest(opts.ignoreSelector)) return;
+    dragging = true; moved = false;
+    handleEl.classList.add('dragging');
+    const rect = el.getBoundingClientRect();
+    const point = e.touches ? e.touches[0] : e;
+    startX = point.clientX; startY = point.clientY;
+    startLeft = rect.left; startTop = rect.top;
+    document.addEventListener('mousemove', onPointerMove);
+    document.addEventListener('mouseup', onPointerUp);
+    document.addEventListener('touchmove', onPointerMove, { passive: false });
+    document.addEventListener('touchend', onPointerUp);
+  }
+  handleEl.addEventListener('mousedown', onPointerDown);
+  handleEl.addEventListener('touchstart', onPointerDown, { passive: false });
+  // 드래그로 이동한 뒤에는 클릭(예: FAB의 토글 동작)이 같이 발생하지 않도록 막는다.
+  handleEl.addEventListener('click', function (e) {
+    if (moved) { e.preventDefault(); e.stopPropagation(); moved = false; }
+  }, true);
+  // 새로고침 후에도 마지막 위치를 복원
+  try {
+    const saved = JSON.parse(localStorage.getItem(storageKey) || 'null');
+    if (saved && typeof saved.left === 'number' && typeof saved.top === 'number') {
+      const pos = clampPos(saved.left, saved.top);
+      applyPos(pos.left, pos.top);
+    }
+  } catch (e) {}
+}
+function initAiDraggable_() {
+  const fab = document.getElementById('aiFab');
+  const panel = document.getElementById('aiPanel');
+  const panelHeader = document.getElementById('aiPanelHeader');
+  if (fab) makeDraggable_(fab, fab, 'namu_pipeline_ai_fab_pos_v1');
+  if (panel && panelHeader) makeDraggable_(panel, panelHeader, 'namu_pipeline_ai_panel_pos_v1', { ignoreSelector: 'button' });
+  // 화면 크기가 바뀌어(예: 창 크기 조절, 모바일 회전) 화면 밖으로 나가면 다시 안으로 당겨온다.
+  window.addEventListener('resize', () => {
+    [fab, panel].forEach(el => {
+      if (!el) return;
+      const rect = el.getBoundingClientRect();
+      if (rect.right > window.innerWidth || rect.bottom > window.innerHeight || rect.left < 0 || rect.top < 0) {
+        const left = Math.min(Math.max(4, rect.left), Math.max(4, window.innerWidth - rect.width - 4));
+        const top = Math.min(Math.max(4, rect.top), Math.max(4, window.innerHeight - rect.height - 4));
+        el.style.left = left + 'px';
+        el.style.top = top + 'px';
+        el.style.right = 'auto';
+        el.style.bottom = 'auto';
+      }
+    });
+  });
+}
 // ---------- AI 입력 (대화형 챗봇 — 현재 프로젝트/자료 데이터를 참고해서 이어서 질의응답) ----------
 let aiChatHistory = []; // [{role:'user'|'assistant', content:string}] — 페이지를 새로고침하면 초기화됩니다(서버에 저장하지 않음).
 function toggleAiPanel() {
@@ -1782,7 +1958,8 @@ function toggleAiPanel() {
 // 현재 화면에 있는 프로젝트/자료 데이터를 AI가 읽을 수 있는 텍스트로 정리한다.
 // (AI 입력창에 뭘 물어보든, 실제 대시보드 데이터를 근거로 답할 수 있도록 항상 같이 보낸다.)
 function buildAiProjectsContext_() {
-  const lines = [`[프로젝트 목록] (총 ${projects.length}건, 오늘 날짜: ${new Date().toLocaleDateString('ko-KR')})`];
+  const lines = [`[단계 목록] (프로젝트의 "현재 단계"를 바꿀 때 아래 id 또는 이름 중 하나를 그대로 써: ${STAGES.map(s => `${s.id}(${s.name})`).join(', ')})`];
+  lines.push(`\n[프로젝트 목록] (총 ${projects.length}건, 오늘 날짜: ${new Date().toLocaleDateString('ko-KR')})`);
   if (!projects.length) {
     lines.push('등록된 프로젝트가 없습니다.');
   } else {
@@ -1791,7 +1968,8 @@ function buildAiProjectsContext_() {
       const stage = stageInfo ? `${stageInfo.id}. ${stageInfo.name}` : '미지정';
       let line = `- ${p.name} | 클라이언트: ${p.client || '-'} | 입찰상태: ${p.status || '-'} | 마감일: ${p.deadline || '미정'} | 담당 디렉터: ${p.director || '-'} / PD: ${p.pd || '-'} | 현재 단계: ${stage}`;
       if (p.quoteAmount) line += ` | 견적: ${Number(p.quoteAmount).toLocaleString()}원`;
-      if (p.actualCost) line += ` | 실제 투입: ${Number(p.actualCost).toLocaleString()}원 | 마진: ${((p.quoteAmount||0)-p.actualCost).toLocaleString()}원`;
+      line += ` | AI 크레딧 사용량: ${Number(p.aiCredits||0).toLocaleString()}`;
+      if (p.actualCost) line += ` | 실제 투입 비용: ${Number(p.actualCost).toLocaleString()}원 | 마진: ${((p.quoteAmount||0)-p.actualCost).toLocaleString()}원`;
       if (p.blockedStages && p.blockedStages.length) line += ` | ⚠ 보류 단계 있음${p.blockReason ? ' (사유: ' + p.blockReason + ')' : ''}`;
       if (p.note) line += ` | 비고: ${p.note}`;
       lines.push(line);
@@ -1804,6 +1982,20 @@ function buildAiProjectsContext_() {
     aiTasks.forEach(t => {
       const projName = (projects.find(p => p.id === t.project) || {}).name;
       lines.push(`- ${t.title} | 유형: ${t.type || '-'} | 담당: ${t.assignee || '-'} | 상태: ${t.status || '-'}${projName ? ` | 연결 프로젝트: ${projName}` : ''}`);
+    });
+  }
+  lines.push(`\n[일정 계산기 작업 목록] (총 ${scheduleTasks.length}건 — 유형 종류: ${WORK_TYPES.map(w => `${w.id}(${w.label})`).join(', ')} / 난이도: Low,Medium,High,Very High / 숙련도: junior,mid,senior,lead)`);
+  if (!scheduleTasks.length) {
+    lines.push('등록된 일정 계산기 작업이 없습니다.');
+  } else {
+    scheduleTasks.forEach(t => {
+      const projName = (projects.find(p => p.id === t.project) || {}).name;
+      const depNames = (t.dependsOn || []).map(d => (scheduleTasks.find(x => x.id === d) || {}).name).filter(Boolean);
+      let line = `- ${t.name} | 유형: ${t.workType || '-'}(${WORK_TYPE_LABEL[t.workType] || ''}) | 난이도: ${t.difficulty || '-'} | 숙련도: ${t.skill || '-'} | 투입인원: ${t.workers || 1}${projName ? ` | 연결 프로젝트: ${projName}` : ''}`;
+      if (t.aiAssisted) line += ' | AI 활용함';
+      if ((t.sourcesProvided || []).length) line += ` | 제공 소스: ${t.sourcesProvided.join(', ')}`;
+      if (depNames.length) line += ` | 선행작업: ${depNames.join(', ')}`;
+      lines.push(line);
     });
   }
   const typeLabel = {image: '이미지', video: '영상 링크', prompt: '프롬프트'};
@@ -1881,6 +2073,8 @@ const PROJECT_STATUS_OPTIONS_ = ['검토중', '입찰준비', '제출완료', '�
 const TASK_TYPE_OPTIONS_ = ['이미지', '영상', '오디오', '업스케일/렌더링', '기타'];
 const TASK_ASSIGNEE_OPTIONS_ = ['AI팀', 'PD풀', '디렉터풀', '입찰팀'];
 const TASK_STATUS_OPTIONS_ = ['대기', '진행중', '완료'];
+const SCHED_DIFFICULTY_OPTIONS_ = ['Low', 'Medium', 'High', 'Very High'];
+const SCHED_SKILL_OPTIONS_ = ['junior', 'mid', 'senior', 'lead'];
 // action.project(프로젝트명 일부)를 실제 프로젝트 id로 바꿔준다. 못 찾으면 null, 여러 개 걸리면 'ambiguous'를 반환.
 function resolveProjectMatch_(nameFragment) {
   if (!nameFragment) return { id: '' };
@@ -1889,6 +2083,33 @@ function resolveProjectMatch_(nameFragment) {
   if (matches.length === 0) return { id: null };
   if (matches.length > 1) return { id: null, ambiguous: true };
   return { id: matches[0].id, name: matches[0].name };
+}
+// 일정 계산기 작업명(일부)을 실제 scheduleTasks id로 바꿔준다. 못 찾으면 null, 여러 개 걸리면 'ambiguous'.
+function resolveScheduleTaskMatch_(nameFragment) {
+  if (!nameFragment) return { id: '' };
+  const kw = String(nameFragment).toLowerCase();
+  const matches = scheduleTasks.filter(t => (t.name || '').toLowerCase().includes(kw));
+  if (matches.length === 0) return { id: null };
+  if (matches.length > 1) return { id: null, ambiguous: true };
+  return { id: matches[0].id, name: matches[0].name };
+}
+// "3D렌더링"(id) 또는 "렌더링"(라벨) 둘 다 허용해서 WORK_TYPES에서 실제 id를 찾아준다. 못 찾으면 null.
+function resolveWorkType_(raw) {
+  if (!raw) return null;
+  const s = String(raw).trim();
+  const found = WORK_TYPES.find(w => w.id === s || w.label === s);
+  return found ? found.id : null;
+}
+// "0-1", "기획" 처럼 단계 id/이름 중 뭘로 와도 STAGES 배열에서의 실제 인덱스로 바꿔준다. 못 찾으면 -1.
+function resolveStageIndex_(raw) {
+  if (raw === undefined || raw === null || String(raw).trim() === '') return -1;
+  const s = String(raw).trim();
+  let idx = STAGES.findIndex(st => st.id === s || st.name === s);
+  if (idx === -1) {
+    const n = parseInt(s, 10);
+    if (!isNaN(n) && STAGES[n]) idx = n;
+  }
+  return idx;
 }
 // AI가 제안한 action을 실제 데이터에 반영한다. 잘못되거나 애매한 요청은 반영하지 않고 이유를 알려준다.
 function applyAiAction_(action) {
@@ -1905,8 +2126,9 @@ function applyAiAction_(action) {
         director: action.director ? String(action.director).trim() : '',
         pd: action.pd ? String(action.pd).trim() : '',
         quoteAmount: Number(action.quoteAmount) || 0,
-        aiCredits: 0,
-        stageIndex: 0,
+        aiCredits: Number(action.aiCredits) || 0,
+        actualCost: Number(action.actualCost) || 0,
+        stageIndex: resolveStageIndex_(action.stage) !== -1 ? resolveStageIndex_(action.stage) : 0,
         note: action.note ? String(action.note).trim() : '',
       };
       projects.push({ id: genId_('p'), blockedStages: [], blockReason: '', ...data, updatedAt: Date.now() });
@@ -1930,10 +2152,34 @@ function applyAiAction_(action) {
       if (typeof fields.director === 'string') patch.director = fields.director.trim();
       if (typeof fields.pd === 'string') patch.pd = fields.pd.trim();
       if (fields.quoteAmount !== undefined) patch.quoteAmount = Number(fields.quoteAmount) || 0;
+      if (fields.aiCredits !== undefined) patch.aiCredits = Number(fields.aiCredits) || 0;
+      if (fields.actualCost !== undefined) patch.actualCost = Number(fields.actualCost) || 0;
       if (typeof fields.note === 'string') patch.note = fields.note.trim();
-      if (!Object.keys(patch).length) return { ok: false, message: '⚠️ 반영할 변경 내용이 없습니다.' };
+      const stageIdx = resolveStageIndex_(fields.stage);
+      if (stageIdx !== -1) patch.stageIndex = stageIdx;
+      const changedKeys = Object.keys(patch);
+      // 보류(blocked)/보류 사유는 배열(blockedStages)을 직접 다루기 때문에 위 patch 객체와 별도로 처리한다.
+      let blockChanged = false;
+      if (typeof fields.blocked === 'boolean') {
+        const stageForBlock = stageIdx !== -1 ? stageIdx : p.stageIndex;
+        const already = p.blockedStages.includes(stageForBlock);
+        if (fields.blocked && !already) {
+          p.blockedStages.push(stageForBlock);
+          if (typeof fields.blockReason === 'string') p.blockReason = fields.blockReason.trim();
+          blockChanged = true;
+        } else if (!fields.blocked && already) {
+          p.blockedStages = p.blockedStages.filter(s => s !== stageForBlock);
+          if (!p.blockedStages.length) p.blockReason = '';
+          blockChanged = true;
+        } else if (fields.blocked && already && typeof fields.blockReason === 'string' && fields.blockReason.trim() !== p.blockReason) {
+          p.blockReason = fields.blockReason.trim();
+          blockChanged = true;
+        }
+      }
+      if (!changedKeys.length && !blockChanged) return { ok: false, message: '⚠️ 반영할 변경 내용이 없습니다.' };
       Object.assign(p, patch, { updatedAt: Date.now() });
-      logActivity_(`🤖 AI가 "${p.name}" 프로젝트 정보를 수정함 (${Object.keys(patch).join(', ')})`);
+      const changeSummary = changedKeys.concat(blockChanged ? ['보류상태'] : []).join(', ');
+      logActivity_(`🤖 AI가 "${p.name}" 프로젝트 정보를 수정함 (${changeSummary})`);
       renderAll();
       queueAutoSave();
       return { ok: true, message: `✅ 프로젝트 "${p.name}" 정보를 수정했습니다. (화면에 바로 반영됨)` };
@@ -2020,6 +2266,125 @@ function applyAiAction_(action) {
       renderAll();
       queueAutoSave();
       return { ok: true, message: `✅ 자료 "${asset.name}"을(를) 자료 보관함에 추가했습니다. (화면에 바로 반영됨)` };
+    }
+    if (action.action === 'update_asset') {
+      if (!action.match) return { ok: false, message: '⚠️ 어떤 자료를 수정할지 알 수 없어서 반영하지 못했습니다.' };
+      const kw = String(action.match).toLowerCase();
+      const matches = assets.filter(a => (a.name || '').toLowerCase().includes(kw));
+      if (matches.length === 0) return { ok: false, message: `⚠️ "${action.match}"과(와) 일치하는 자료를 찾지 못했습니다.` };
+      if (matches.length > 1) return { ok: false, message: `⚠️ "${action.match}"과(와) 일치하는 자료가 여러 개라 반영하지 못했습니다. 자료명을 더 정확히 말해주세요.` };
+      const a = matches[0];
+      const fields = action.fields || {};
+      const patch = {};
+      if (typeof fields.name === 'string' && fields.name.trim()) patch.name = fields.name.trim();
+      if (typeof fields.description === 'string') patch.description = fields.description.trim();
+      if (a.type === 'video' && typeof fields.url === 'string' && fields.url.trim()) patch.url = fields.url.trim();
+      if (a.type === 'prompt' && typeof fields.text === 'string' && fields.text.trim()) patch.text = fields.text.trim();
+      if (fields.tags !== undefined) {
+        patch.tags = Array.isArray(fields.tags)
+          ? fields.tags.map(t => String(t).trim()).filter(Boolean)
+          : String(fields.tags).split(',').map(t => t.trim()).filter(Boolean);
+      }
+      if (fields.project) {
+        const resolved = resolveProjectMatch_(fields.project);
+        if (resolved.ambiguous) return { ok: false, message: `⚠️ "${fields.project}"과(와) 일치하는 프로젝트가 여러 개라 반영하지 못했습니다.` };
+        if (resolved.id === null) return { ok: false, message: `⚠️ "${fields.project}"과(와) 일치하는 프로젝트를 찾지 못해 반영하지 못했습니다.` };
+        patch.projects = (a.projects || []).includes(resolved.id) ? a.projects : (a.projects || []).concat([resolved.id]);
+      }
+      if (!Object.keys(patch).length) return { ok: false, message: '⚠️ 반영할 변경 내용이 없습니다.' };
+      Object.assign(a, patch, { updatedAt: Date.now() });
+      logActivity_(`🤖 AI가 자료 "${a.name}" 정보를 수정함 (${Object.keys(patch).join(', ')})`);
+      renderAll();
+      queueAutoSave();
+      return { ok: true, message: `✅ 자료 "${a.name}" 정보를 수정했습니다. (화면에 바로 반영됨)` };
+    }
+    if (action.action === 'add_schedule_task') {
+      if (!action.name || !String(action.name).trim()) {
+        return { ok: false, message: '⚠️ 작업명이 없어서 일정 계산기에 추가하지 못했습니다.' };
+      }
+      let projectId = '';
+      if (action.project) {
+        const resolved = resolveProjectMatch_(action.project);
+        if (resolved.ambiguous) return { ok: false, message: `⚠️ "${action.project}"과(와) 일치하는 프로젝트가 여러 개라 추가하지 못했습니다.` };
+        if (resolved.id === null) return { ok: false, message: `⚠️ "${action.project}"과(와) 일치하는 프로젝트를 찾지 못해 추가하지 못했습니다.` };
+        projectId = resolved.id;
+      }
+      const workType = resolveWorkType_(action.workType) || '기획';
+      let dependsOn = [];
+      if (action.dependsOn) {
+        const frags = Array.isArray(action.dependsOn) ? action.dependsOn : [action.dependsOn];
+        for (const frag of frags) {
+          const resolved = resolveScheduleTaskMatch_(frag);
+          if (resolved.ambiguous) return { ok: false, message: `⚠️ 선행작업 "${frag}"과(와) 일치하는 작업이 여러 개라 추가하지 못했습니다.` };
+          if (resolved.id === null) return { ok: false, message: `⚠️ 선행작업 "${frag}"과(와) 일치하는 작업을 찾지 못해 추가하지 못했습니다.` };
+          if (resolved.id) dependsOn.push(resolved.id);
+        }
+      }
+      const task = {
+        id: genId_('st'),
+        name: String(action.name).trim(),
+        project: projectId,
+        workType,
+        difficulty: SCHED_DIFFICULTY_OPTIONS_.includes(action.difficulty) ? action.difficulty : 'Medium',
+        skill: SCHED_SKILL_OPTIONS_.includes(action.skill) ? action.skill : 'mid',
+        workers: Number(action.workers) > 0 ? Math.round(Number(action.workers)) : 1,
+        utilization: 1,
+        sourcesProvided: Array.isArray(action.sourcesProvided) ? action.sourcesProvided.filter(s => SCHED_SOURCE_ITEMS.includes(s)) : [],
+        revisions: {},
+        aiAssisted: !!action.aiAssisted,
+        dependsOn,
+        updatedAt: Date.now(),
+      };
+      scheduleTasks.push(task);
+      logActivity_(`🤖 AI가 일정 계산기에 "${task.name}" 작업을 추가함`);
+      renderAll();
+      queueAutoSave();
+      return { ok: true, message: `✅ 일정 계산기에 "${task.name}" 작업을 추가했습니다. (화면에 바로 반영됨)` };
+    }
+    if (action.action === 'update_schedule_task') {
+      if (!action.match) return { ok: false, message: '⚠️ 어떤 작업을 수정할지 알 수 없어서 반영하지 못했습니다.' };
+      const resolvedTask = resolveScheduleTaskMatch_(action.match);
+      if (resolvedTask.ambiguous) return { ok: false, message: `⚠️ "${action.match}"과(와) 일치하는 작업이 여러 개라 반영하지 못했습니다. 작업명을 더 정확히 말해주세요.` };
+      if (resolvedTask.id === null) return { ok: false, message: `⚠️ "${action.match}"과(와) 일치하는 일정 계산기 작업을 찾지 못했습니다.` };
+      const t = findScheduleTask(resolvedTask.id);
+      const fields = action.fields || {};
+      const patch = {};
+      if (typeof fields.name === 'string' && fields.name.trim()) patch.name = fields.name.trim();
+      if (fields.workType) {
+        const wt = resolveWorkType_(fields.workType);
+        if (wt) patch.workType = wt;
+      }
+      if (SCHED_DIFFICULTY_OPTIONS_.includes(fields.difficulty)) patch.difficulty = fields.difficulty;
+      if (SCHED_SKILL_OPTIONS_.includes(fields.skill)) patch.skill = fields.skill;
+      if (fields.workers !== undefined && Number(fields.workers) > 0) patch.workers = Math.round(Number(fields.workers));
+      if (typeof fields.aiAssisted === 'boolean') patch.aiAssisted = fields.aiAssisted;
+      if (fields.sourcesProvided !== undefined) {
+        const arr = Array.isArray(fields.sourcesProvided) ? fields.sourcesProvided : [fields.sourcesProvided];
+        patch.sourcesProvided = arr.filter(s => SCHED_SOURCE_ITEMS.includes(s));
+      }
+      if (fields.project) {
+        const resolved = resolveProjectMatch_(fields.project);
+        if (resolved.ambiguous) return { ok: false, message: `⚠️ "${fields.project}"과(와) 일치하는 프로젝트가 여러 개라 반영하지 못했습니다.` };
+        if (resolved.id === null) return { ok: false, message: `⚠️ "${fields.project}"과(와) 일치하는 프로젝트를 찾지 못해 반영하지 못했습니다.` };
+        patch.project = resolved.id;
+      }
+      if (fields.dependsOn !== undefined) {
+        const frags = Array.isArray(fields.dependsOn) ? fields.dependsOn : [fields.dependsOn];
+        const dependsOn = [];
+        for (const frag of frags) {
+          const resolved = resolveScheduleTaskMatch_(frag);
+          if (resolved.ambiguous) return { ok: false, message: `⚠️ 선행작업 "${frag}"과(와) 일치하는 작업이 여러 개라 반영하지 못했습니다.` };
+          if (resolved.id === null) return { ok: false, message: `⚠️ 선행작업 "${frag}"과(와) 일치하는 작업을 찾지 못해 반영하지 못했습니다.` };
+          if (resolved.id && resolved.id !== t.id) dependsOn.push(resolved.id);
+        }
+        patch.dependsOn = dependsOn;
+      }
+      if (!Object.keys(patch).length) return { ok: false, message: '⚠️ 반영할 변경 내용이 없습니다.' };
+      Object.assign(t, patch, { updatedAt: Date.now() });
+      logActivity_(`🤖 AI가 일정 계산기 "${t.name}" 작업 정보를 수정함 (${Object.keys(patch).join(', ')})`);
+      renderAll();
+      queueAutoSave();
+      return { ok: true, message: `✅ 일정 계산기 "${t.name}" 작업 정보를 수정했습니다. (화면에 바로 반영됨)` };
     }
     return { ok: false, message: '' };
   } catch (err) {
@@ -2683,6 +3048,7 @@ function finishOnboardingTour() {
 function skipOnboardingTour() { finishOnboardingTour(); }
 // 초기 렌더 - 로그인/실시간 리스너가 붙기 전까지는 빈 화면이며, authGate가 화면을 가리고 있음.
 renderAll();
+initAiDraggable_();
 // 탭을 켜놓은 채 오래 두어도(다른 사람의 변경 없이) 마감 임박 알림은 계속 체크되도록 주기적으로도 확인한다.
 setInterval(() => { if (currentUser) maybeNotifyDeadlines_(); }, 10 * 60 * 1000);
 </script>
