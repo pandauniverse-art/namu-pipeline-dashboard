@@ -793,6 +793,12 @@
         <label>연결 프로젝트 (여러 개 선택 가능 — Ctrl/Cmd 또는 Shift로 다중 선택, 비워두면 전체 공용)</label>
         <select id="as-projects" multiple style="height:100px;"></select>
       </div>
+      <div style="grid-column:1/-1; display:none" id="as-ai-summarize-field">
+        <label style="display:flex; align-items:center; gap:6px; cursor:pointer;">
+          <input type="checkbox" id="as-ai-summarize" checked style="width:auto;"> 저장할 때 AI로 한 줄 요약 자동 생성
+        </label>
+        <div style="font-size:11px; color:var(--text-muted); margin-top:2px;">프롬프트는 내용을, 유튜브 링크는 영상 제목을 바탕으로 AI가 짧게 정리해줍니다. (유튜브가 아닌 링크는 자동 요약이 어려워요.)</div>
+      </div>
     </div>
     <div class="modal-footer">
       <button onclick="closeAssetModal()">취소</button>
@@ -804,7 +810,11 @@
 <button class="ai-fab" onclick="toggleAiPanel()">🤖 AI 입력</button>
 <div class="ai-panel" id="aiPanel">
   <h3>AI 입력</h3>
-  <div style="font-size:11px; color:var(--text-muted);">궁금한 내용을 자연어로 입력하면 AI가 답변합니다. (아직 프로젝트/작업 필드를 자동으로 채워주는 기능은 아니고, 답변을 참고해서 직접 입력해 주세요.)</div>
+  <div style="font-size:11px; color:var(--text-muted);">현재 등록된 프로젝트 데이터를 참고해서 AI가 답변합니다. (아직 프로젝트/작업 필드를 자동으로 채워주는 기능은 아니고, 답변을 참고해서 직접 입력해 주세요.)</div>
+  <div style="display:flex; gap:6px; flex-wrap:wrap;">
+    <button type="button" onclick="askAiQuickSummary('inprogress')" style="font-size:11px; padding:5px 9px;">진행 중 프로젝트 요약</button>
+    <button type="button" onclick="askAiQuickSummary('deadline')" style="font-size:11px; padding:5px 9px;">마감 임박 순 정리</button>
+  </div>
   <textarea id="aiInputText" rows="4" placeholder="여기에 자연어로 입력…"></textarea>
   <button class="primary" onclick="submitAiInput()">AI로 반영</button>
   <div class="ai-result" id="aiInputResult"></div>
@@ -1596,15 +1606,35 @@ function toggleAiPanel() {
   applyPendingRemoteIfAny();
 }
 
+// 현재 화면에 있는 프로젝트 데이터를 AI가 읽을 수 있는 텍스트로 정리한다.
+// (AI 입력창에 뭘 물어보든, 실제 대시보드 데이터를 근거로 답할 수 있도록 항상 같이 보낸다.)
+function buildAiProjectsContext_() {
+  const lines = [`[프로젝트 목록] (총 ${projects.length}건, 오늘 날짜: ${new Date().toLocaleDateString('ko-KR')})`];
+  if (!projects.length) {
+    lines.push('등록된 프로젝트가 없습니다.');
+  } else {
+    projects.forEach(p => {
+      const stageInfo = STAGES[p.stageIndex];
+      const stage = stageInfo ? `${stageInfo.id}. ${stageInfo.name}` : '미지정';
+      let line = `- ${p.name} | 클라이언트: ${p.client || '-'} | 입찰상태: ${p.status || '-'} | 마감일: ${p.deadline || '미정'} | 담당 디렉터: ${p.director || '-'} / PD: ${p.pd || '-'} | 현재 단계: ${stage}`;
+      if (p.quoteAmount) line += ` | 견적: ${Number(p.quoteAmount).toLocaleString()}원`;
+      if (p.note) line += ` | 비고: ${p.note}`;
+      lines.push(line);
+    });
+  }
+  return lines.join('\n');
+}
+
 function submitAiInput() {
   const text = document.getElementById('aiInputText').value.trim();
   const resultEl = document.getElementById('aiInputResult');
   if (!text) return;
   resultEl.textContent = 'AI가 처리 중…';
+  const context = buildAiProjectsContext_();
   fetch(AI_PROXY_URL, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ text }),
+    body: JSON.stringify({ text, context }),
   })
     .then(r => r.json())
     .then(data => {
@@ -1617,6 +1647,15 @@ function submitAiInput() {
     .catch(err => {
       resultEl.textContent = '요청 실패: ' + err.message + ' (네트워크 상태를 확인해 주세요.)';
     });
+}
+
+function askAiQuickSummary(kind) {
+  const presets = {
+    inprogress: '지금 진행 중인 프로젝트들을 마감일이 빠른 순서로 정리해줘. 각 프로젝트마다 현재 단계랑 담당자도 같이 알려줘.',
+    deadline: '마감일이 임박한 프로젝트 순서로 정리해줘. 오늘 기준으로 며칠 남았는지도 알려줘.',
+  };
+  document.getElementById('aiInputText').value = presets[kind] || '';
+  submitAiInput();
 }
 
 // ---------- 자료 보관함 (레퍼런스/AI 학습용 이미지 등) ----------
@@ -1657,6 +1696,7 @@ function openAssetModal() {
   document.getElementById('as-videourl').value = '';
   document.getElementById('as-prompttext').value = '';
   document.getElementById('as-tags').value = '';
+  document.getElementById('as-ai-summarize').checked = true;
   const projSel = document.getElementById('as-projects');
   projSel.innerHTML = projects.map(p => `<option value="${p.id}">${p.name}</option>`).join('');
   toggleAssetTypeFields();
@@ -1668,6 +1708,7 @@ function toggleAssetTypeFields() {
   document.getElementById('as-image-field').style.display = type === 'image' ? '' : 'none';
   document.getElementById('as-video-field').style.display = type === 'video' ? '' : 'none';
   document.getElementById('as-prompt-field').style.display = type === 'prompt' ? '' : 'none';
+  document.getElementById('as-ai-summarize-field').style.display = (type === 'video' || type === 'prompt') ? '' : 'none';
 }
 
 function saveAssetFromModal() {
@@ -1676,18 +1717,24 @@ function saveAssetFromModal() {
   const tags = document.getElementById('as-tags').value.split(',').map(t => t.trim()).filter(Boolean);
   const linkedProjects = Array.from(document.getElementById('as-projects').selectedOptions).map(o => o.value);
 
+  const wantAiSummary = !!document.getElementById('as-ai-summarize').checked;
+
   if (type === 'video') {
     const url = document.getElementById('as-videourl').value.trim();
     if (!url) { showToast('영상 링크를 입력하세요'); return; }
-    assets.push({id: genId_('a'), type: 'video', name: name || url, tags, projects: linkedProjects, url, updatedAt: Date.now()});
+    const asset = {id: genId_('a'), type: 'video', name: name || url, tags, projects: linkedProjects, url, updatedAt: Date.now()};
+    assets.push(asset);
     finishAssetSave_();
+    if (wantAiSummary) generateAssetAiSummary_(asset);
     return;
   }
   if (type === 'prompt') {
     const text = document.getElementById('as-prompttext').value.trim();
     if (!text) { showToast('프롬프트 내용을 입력하세요'); return; }
-    assets.push({id: genId_('a'), type: 'prompt', name: name || text.slice(0, 30), tags, projects: linkedProjects, text, updatedAt: Date.now()});
+    const asset = {id: genId_('a'), type: 'prompt', name: name || text.slice(0, 30), tags, projects: linkedProjects, text, updatedAt: Date.now()};
+    assets.push(asset);
     finishAssetSave_();
+    if (wantAiSummary) generateAssetAiSummary_(asset);
     return;
   }
   // 이미지
@@ -1713,6 +1760,46 @@ function finishAssetSave_() {
   renderAssets();
   queueAutoSave();
   showToast('자료가 추가되었습니다');
+}
+
+// 프롬프트/영상 링크 자료를 저장할 때, AI에게 한 줄 요약을 요청해서 카드에 붙여준다.
+// 유튜브 링크는 oEmbed API로 영상 제목을 먼저 가져온 뒤 그 제목을 바탕으로 요약을 요청한다.
+function generateAssetAiSummary_(asset) {
+  asset.aiSummary = 'AI 요약 생성 중…';
+  renderAssets();
+  const finish = (summary) => {
+    if (!assets.includes(asset)) return; // 그 사이 삭제됐으면 무시
+    asset.aiSummary = summary;
+    asset.updatedAt = Date.now();
+    renderAssets();
+    queueAutoSave();
+  };
+  const askAi = (prompt) => {
+    fetch(AI_PROXY_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text: prompt }),
+    })
+      .then(r => r.json())
+      .then(data => finish(data.error ? ('요약 실패: ' + data.error) : (data.reply || '').trim()))
+      .catch(err => finish('요약 실패: ' + err.message));
+  };
+
+  if (asset.type === 'prompt') {
+    askAi(`다음은 이미지/영상 생성에 쓴 AI 프롬프트야. 나중에 목록에서 한눈에 알아볼 수 있게 25자 내외 한국어 한 줄로 요약해줘. 다른 설명 없이 요약 문장만 출력해:\n\n${asset.text}`);
+    return;
+  }
+  if (asset.type === 'video') {
+    const ytId = youtubeVideoId_(asset.url);
+    if (!ytId) {
+      finish(''); // 유튜브가 아니면 자동 요약을 지원하지 않음(제목을 가져올 방법이 없음)
+      return;
+    }
+    fetch(`https://www.youtube.com/oembed?url=${encodeURIComponent(asset.url)}&format=json`)
+      .then(r => { if (!r.ok) throw new Error('영상 제목을 가져오지 못했습니다'); return r.json(); })
+      .then(meta => askAi(`다음은 레퍼런스로 등록한 유튜브 영상의 제목이야: "${meta.title}". 이 영상이 어떤 내용/레퍼런스로 참고하기 좋을지 25자 내외 한국어 한 줄로 요약해줘. 다른 설명 없이 요약 문장만 출력해.`))
+      .catch(err => finish('요약 실패: ' + err.message));
+  }
 }
 
 function updateAssetField(id, field, value) {
@@ -1787,6 +1874,7 @@ function renderAssets() {
       ${assetThumbHTML_(a)}
       <div class="asset-body">
         <span class="pill ${a.type==='image'?'ai':a.type==='video'?'pd':'director'}" style="align-self:flex-start;">${typeLabel[a.type]||a.type}</span>
+        ${a.aiSummary ? `<div style="font-size:11px; color:var(--text-secondary); background:var(--surface-2); border-radius:6px; padding:5px 7px;">🤖 ${a.aiSummary.replace(/</g,'&lt;')}</div>` : ''}
         <input value="${(a.name||'').replace(/"/g,'&quot;')}" placeholder="이름" onchange="updateAssetField('${a.id}','name',this.value)">
         <input value="${(a.tags||[]).join(', ').replace(/"/g,'&quot;')}" placeholder="태그 (쉼표로 구분)" onchange="updateAssetField('${a.id}','tags',this.value)">
         <select multiple size="3" onchange="updateAssetField('${a.id}','projects', Array.from(this.selectedOptions).map(o=>o.value))">
