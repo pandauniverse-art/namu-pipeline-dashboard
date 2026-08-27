@@ -31,6 +31,14 @@
     --serious:        #ec835a;
     --critical:       #d03b3b;
     --success-text:   #006300;
+    /* 프로젝트/일정/태그 카테고리 색상 선택기용 팔레트 — 색이 7개뿐이라 너무 부족하다는 요청에 따라
+       색상환을 24등분해서 골고루 뽑았다(흰 글자를 얹어도 잘 읽히도록 색마다 명도를 개별 보정함). */
+    --pal-1: #d73b2d; --pal-2: #be5724; --pal-3: #9f6a1e; --pal-4: #87751a;
+    --pal-5: #737b17; --pal-6: #5d8018; --pal-7: #458419; --pal-8: #2c871a;
+    --pal-9: #1a8823; --pal-10: #1a873e; --pal-11: #198658; --pal-12: #198472;
+    --pal-13: #1a828b; --pal-14: #207cab; --pal-15: #2c73d7; --pal-16: #546cdf;
+    --pal-17: #6e64e1; --pal-18: #865ae0; --pal-19: #a04bdd; --pal-20: #bc30d8;
+    --pal-21: #cb27be; --pal-22: #d3289a; --pal-23: #d72f75; --pal-24: #d83550;
   }
   @media (prefers-color-scheme: dark) {
     :root:where(:not([data-theme="light"])) {
@@ -55,6 +63,12 @@
       --serious:        #ec835a;
       --critical:       #e66767;
       --success-text:   #0ca30c;
+      --pal-1: #d7483c; --pal-2: #c35c28; --pal-3: #a56f22; --pal-4: #8c791d;
+      --pal-5: #77801a; --pal-6: #62851b; --pal-7: #4a891c; --pal-8: #2f8b1d;
+      --pal-9: #1d8d26; --pal-10: #1d8d42; --pal-11: #1c8a5d; --pal-12: #1c8876;
+      --pal-13: #1e8690; --pal-14: #2482b0; --pal-15: #377ad6; --pal-16: #5c72de;
+      --pal-17: #746ae0; --pal-18: #8b62df; --pal-19: #a454dc; --pal-20: #be3ed8;
+      --pal-21: #d22bc4; --pal-22: #d636a0; --pal-23: #d83e7e; --pal-24: #d9435c;
     }
   }
   :root[data-theme="dark"] {
@@ -79,6 +93,12 @@
     --serious:        #ec835a;
     --critical:       #e66767;
     --success-text:   #0ca30c;
+    --pal-1: #d7483c; --pal-2: #c35c28; --pal-3: #a56f22; --pal-4: #8c791d;
+    --pal-5: #77801a; --pal-6: #62851b; --pal-7: #4a891c; --pal-8: #2f8b1d;
+    --pal-9: #1d8d26; --pal-10: #1d8d42; --pal-11: #1c8a5d; --pal-12: #1c8876;
+    --pal-13: #1e8690; --pal-14: #2482b0; --pal-15: #377ad6; --pal-16: #5c72de;
+    --pal-17: #746ae0; --pal-18: #8b62df; --pal-19: #a454dc; --pal-20: #be3ed8;
+    --pal-21: #d22bc4; --pal-22: #d636a0; --pal-23: #d83e7e; --pal-24: #d9435c;
   }
   * { box-sizing: border-box; }
   body {
@@ -347,11 +367,11 @@
   .cal-event-bar.edge-end { border-radius: 0 6px 6px 0; margin-right: 2px; }
   .cal-event-bar.edge-mid { border-radius: 0; }
   /* 프로젝트/캘린더 일정 색상을 사용자가 직접 고르는 스와치 선택기(프로젝트 모달 · 일정 모달 공용) */
-  .color-swatch-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
-  .color-swatch { width: 26px; height: 26px; border-radius: 50%; border: 2px solid transparent; background: var(--sw); cursor: pointer; padding: 0; }
-  .color-swatch:hover { opacity: 0.85; }
+  .color-swatch-row { display: flex; flex-wrap: wrap; gap: 7px; align-items: center; padding: 2px 0; }
+  .color-swatch { width: 23px; height: 23px; border-radius: 50%; border: 2px solid transparent; background: var(--sw); cursor: pointer; padding: 0; flex-shrink: 0; }
+  .color-swatch:hover { transform: scale(1.12); }
   .color-swatch.active { border-color: var(--text-primary); box-shadow: 0 0 0 2px var(--surface-1) inset; }
-  .color-swatch.auto { width: auto; height: 26px; border-radius: 999px; padding: 0 10px; background: var(--surface-2); color: var(--text-secondary); font-size: 11px; font-weight: 700; border: 1px solid var(--border); }
+  .color-swatch.auto { width: auto; height: 23px; border-radius: 999px; padding: 0 10px; background: var(--surface-2); color: var(--text-secondary); font-size: 11px; font-weight: 700; border: 1px solid var(--border); flex-basis: 100%; }
   .color-swatch.auto.active { border-color: var(--text-primary); color: var(--text-primary); }
   /* ---------- 모바일 화면 최적화 ---------- */
   @media (max-width: 760px) {
@@ -2612,7 +2632,8 @@ function migrateCalendarNoteSchemaV2_(notesList) {
 // 어떤 id(프로젝트/카테고리 등)에 대해 항상 같은 색상 CSS 변수를 돌려주는 범용 헬퍼 — 랜덤이 아니라
 // 문자열 해시로 정하므로, 다시 렌더링해도(달을 넘기거나 목록 순서가 바뀌어도) 같은 id는 계속 같은 색으로 보인다.
 // 달력의 프로젝트/일정 막대색, 태그 대표 키워드(카테고리)별 색상 구분 등 여러 곳에서 공통으로 쓴다.
-const HASH_COLOR_PALETTE_ = ['--series-1', '--series-2', '--series-3', '--series-6', '--series-7', '--series-8', '--series-9'];
+// 예전엔 7색뿐이라 너무 부족하다는 요청에 따라, 색상환을 24등분한 --pal-1~24 팔레트로 넓혔다.
+const HASH_COLOR_PALETTE_ = Array.from({length: 24}, (_, i) => `--pal-${i + 1}`);
 function hashColorVar_(id) {
   const s = String(id || '');
   let hash = 0;
