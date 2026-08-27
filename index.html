@@ -22,8 +22,10 @@
     --series-1:       #2a78d6; /* blue - 진행중 */
     --series-2:       #eb6834; /* orange - AI팀 */
     --series-3:       #1baf7a; /* aqua - PD풀 */
+    --series-6:       #0f9b8e; /* teal - 캘린더 일정(범위) */
     --series-7:       #4a3aa7; /* violet - 디렉터풀 */
     --series-8:       #b8860b; /* amber - 입찰팀 */
+    --series-9:       #b23a6b; /* rose - 작업자 */
     --good:           #0ca30c;
     --warning:        #fab219;
     --serious:        #ec835a;
@@ -44,8 +46,10 @@
       --series-1:       #3987e5;
       --series-2:       #d95926;
       --series-3:       #199e70;
+      --series-6:       #2bb8a8;
       --series-7:       #9085e9;
       --series-8:       #d4a017;
+      --series-9:       #d4638f;
       --good:           #0ca30c;
       --warning:        #fab219;
       --serious:        #ec835a;
@@ -66,8 +70,10 @@
     --series-1:       #3987e5;
     --series-2:       #d95926;
     --series-3:       #199e70;
+    --series-6:       #2bb8a8;
     --series-7:       #9085e9;
     --series-8:       #d4a017;
+    --series-9:       #d4638f;
     --good:           #0ca30c;
     --warning:        #fab219;
     --serious:        #ec835a;
@@ -178,6 +184,7 @@
   .pill.pd { background: color-mix(in srgb, var(--series-3) 18%, transparent); color: var(--series-3); }
   .pill.director { background: color-mix(in srgb, var(--series-7) 18%, transparent); color: var(--series-7); }
   .pill.bid { background: color-mix(in srgb, var(--series-8) 18%, transparent); color: var(--series-8); }
+  .pill.worker { background: color-mix(in srgb, var(--series-9) 18%, transparent); color: var(--series-9); }
   .stage-track { display: flex; gap: 3px; }
   .stage-dot { width: 14px; height: 14px; border-radius: 4px; background: var(--grid); cursor: pointer; flex-shrink: 0; border: 1px solid var(--border); }
   .stage-dot.done { background: var(--good); border-color: var(--good); }
@@ -292,20 +299,31 @@
   .asset-subtab-btn { padding: 8px 14px; border-radius: 20px; border: 1px solid var(--border); background: var(--surface-1); color: var(--text-secondary); font-size: 13px; font-weight: 600; cursor: pointer; }
   .asset-subtab-btn.active { background: var(--text-primary); color: var(--surface-1); border-color: var(--text-primary); }
   .asset-subtab-btn span { opacity: 0.75; font-weight: 500; }
-  /* ---------- 달력 뷰 ---------- */
-  .cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; }
+  /* ---------- 달력 뷰 ----------
+     한 주(cal-week)를 각각 하나의 CSS 그리드로 두고, 1행엔 날짜 숫자 칸(cal-daynum-cell)을,
+     그 아래 행들엔 여러 날에 걸친 막대(cal-event-bar · 프로젝트 진행기간/캘린더 일정)를
+     grid-column을 여러 칸 span 시켜 노션/구글캘린더처럼 이어지게 표시한다.
+     같은 주 안에서 겹치는 막대는 "레인(lane)"으로 나눠 서로 다른 행에 쌓고, 같은 이벤트가
+     여러 주에 걸치면 레인 번호를 그대로 유지해서 다음 줄에서도 같은 자리에 이어지게 한다. */
+  .cal-dow-row { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; margin-bottom: 4px; }
   .cal-dow { font-size: 11px; font-weight: 700; color: var(--text-muted); text-align: center; padding: 4px 0; }
-  .cal-cell { min-height: 84px; border: 1px solid var(--grid); border-radius: 6px; padding: 5px; display: flex; flex-direction: column; gap: 3px; background: var(--surface-1); }
-  .cal-cell.empty { background: transparent; border-color: transparent; }
-  .cal-cell.today { border-color: var(--text-primary); border-width: 2px; }
+  .cal-week { display: grid; grid-template-columns: repeat(7, 1fr); column-gap: 6px; row-gap: 2px; margin-bottom: 6px; }
+  .cal-daybox { grid-row: 1 / -1; border: 1px solid var(--grid); border-radius: 6px; background: var(--surface-1); min-height: 30px; }
+  .cal-daybox.today { border-color: var(--text-primary); border-width: 2px; }
+  .cal-daynum-cell { grid-row: 1; padding: 5px 5px 3px; display: flex; flex-direction: column; gap: 3px; }
   .cal-date { font-size: 11px; color: var(--text-muted); }
-  .cal-cell.today .cal-date { color: var(--text-primary); font-weight: 700; }
+  .cal-daynum-cell.today .cal-date { color: var(--text-primary); font-weight: 700; }
   .cal-pill { font-size: 10.5px; padding: 2px 6px; border-radius: 6px; background: var(--series-1); color: #fff; cursor: pointer; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .cal-pill.risk { background: var(--critical); }
-  .cal-note { flex: 1; min-height: 20px; resize: none; border: 1px solid transparent; background: transparent; color: var(--text-secondary); font-size: 10.5px; font-family: inherit; padding: 2px 3px; border-radius: 4px; line-height: 1.35; }
-  .cal-note:hover { border-color: var(--grid); }
-  .cal-note:focus { border-color: var(--text-primary); background: var(--surface-1); color: var(--text-primary); outline: none; }
-  .cal-note::placeholder { color: var(--text-muted); }
+  .cal-add-row { font-size: 10px; color: var(--text-muted); padding: 0 2px; border-radius: 4px; cursor: pointer; align-self: flex-start; }
+  .cal-add-row:hover { background: var(--surface-2); color: var(--text-primary); }
+  .cal-event-bar { font-size: 10.5px; padding: 2px 6px; color: #fff; cursor: pointer; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; align-self: center; }
+  .cal-event-bar.type-project { background: var(--series-1); }
+  .cal-event-bar.type-note { background: var(--series-6); }
+  .cal-event-bar.edge-solo { border-radius: 6px; margin: 0 2px; }
+  .cal-event-bar.edge-start { border-radius: 6px 0 0 6px; margin-left: 2px; }
+  .cal-event-bar.edge-end { border-radius: 0 6px 6px 0; margin-right: 2px; }
+  .cal-event-bar.edge-mid { border-radius: 0; }
   /* ---------- 모바일 화면 최적화 ---------- */
   @media (max-width: 760px) {
     main { padding: 16px 12px 90px; }
@@ -331,9 +349,10 @@
     .filter-row select, .filter-row input[type="text"] { flex: 1 1 140px; min-width: 0; }
     .row-actions { flex-wrap: wrap; }
     #deadlineNotifyBar { flex-wrap: wrap; }
-    .cal-cell { min-height: 56px; padding: 3px; }
-    .cal-grid { gap: 3px; }
-    .cal-pill { font-size: 9.5px; padding: 1px 4px; }
+    .cal-daybox { min-height: 24px; }
+    .cal-daynum-cell { padding: 3px 3px 2px; }
+    .cal-week { column-gap: 3px; }
+    .cal-pill, .cal-event-bar { font-size: 9.5px; padding: 1px 4px; }
   }
 </style>
 </head>
@@ -447,7 +466,7 @@
   <!-- TEAM VIEW -->
   <section class="tabpanel" id="tab-team">
     <h2 class="section-title">담당자별 워크로드</h2>
-    <div class="note-box" style="margin-top:0;">디렉터·PD 이름으로 등록된 진행중 프로젝트(수주/실주 제외) 건수를 집계합니다. 동시에 3건 이상이면 과부하 경고를 표시합니다.</div>
+    <div class="note-box" style="margin-top:0;">디렉터·PD·작업자 이름으로 등록된 진행중 프로젝트(수주/실주 제외) 건수를 집계합니다. 동시에 3건 이상이면 과부하 경고를 표시합니다.</div>
     <div class="card" id="workloadSummary" style="margin-bottom:20px;"></div>
     <div class="filter-row">
       <select id="teamFilter" onchange="renderTeam()">
@@ -716,15 +735,16 @@
   <!-- CALENDAR (실제 달력 날짜 기준 마감일 뷰) -->
   <section class="tabpanel" id="tab-calendar">
     <div class="note-box" style="margin-top:0; margin-bottom:16px;">
-      프로젝트의 <strong>마감일</strong>을 실제 달력 날짜 기준으로 볼 수 있는 뷰입니다. (일정 계산기의 타임라인은 상대적 D+n 기준이라, 실제 날짜가 필요할 때는 이 달력을 참고하세요.) 날짜 칸의 프로젝트를 누르면 바로 수정 화면이 열립니다.
+      프로젝트의 <strong>마감일</strong>을 실제 달력 날짜 기준으로 볼 수 있는 뷰입니다. (일정 계산기의 타임라인은 상대적 D+n 기준이라, 실제 날짜가 필요할 때는 이 달력을 참고하세요.) 날짜 칸의 프로젝트를 누르면 바로 수정 화면이 열립니다. 날짜 칸의 "+ 일정"을 누르거나 아래 "+ 일정 추가" 버튼으로, 노션처럼 시작일~종료일 범위를 지정해 여러 날에 걸친 일정(휴무, 출장, 촬영 기간 등)을 한 번에 등록할 수 있습니다.
     </div>
     <div class="filter-row" style="align-items:center; justify-content:space-between;">
       <div style="display:flex; align-items:center; gap:8px;">
         <button type="button" onclick="calendarShiftMonth(-1)">◀</button>
         <h2 class="section-title" id="calendarMonthLabel" style="margin:0; min-width:110px; text-align:center;"></h2>
         <button type="button" onclick="calendarShiftMonth(1)">▶</button>
+        <button type="button" onclick="calendarGoToday()">오늘</button>
       </div>
-      <button type="button" onclick="calendarGoToday()">오늘</button>
+      <button type="button" class="primary" onclick="openCalendarEventModal(null)">+ 일정 추가</button>
     </div>
     <div class="card">
       <div id="calendarGrid"></div>
@@ -774,12 +794,16 @@
       <div><label>마감일</label><input id="p-deadline" type="date"></div>
       <div><label>담당 디렉터</label><input id="p-director" placeholder="이름"></div>
       <div><label>담당 PD</label><input id="p-pd" placeholder="이름"></div>
+      <div><label>담당 작업자</label><input id="p-worker" placeholder="이름"></div>
     </div>
     <button type="button" class="advanced-toggle" id="p-advanced-toggle" onclick="toggleProjectAdvanced()">상세 옵션 보기 ▾</button>
     <div class="form-grid advanced-fields" id="p-advanced-fields" style="display:none;">
       <div><label>견적 금액 (원)</label><input id="p-quote" type="number" min="0" step="10000" placeholder="예: 15000000"></div>
       <div><label>AI 크레딧 사용량</label><input id="p-aicredits" type="number" min="0" step="1" placeholder="예: 3200"></div>
       <div><label>실제 투입 비용 (원, 인건비 등)</label><input id="p-actualcost" type="number" min="0" step="10000" placeholder="예: 9000000"></div>
+      <div><label>진행 기간 시작일</label><input id="p-period-start" type="date" onchange="if(document.getElementById('p-period-end').value && document.getElementById('p-period-end').value < this.value) document.getElementById('p-period-end').value = this.value;"></div>
+      <div><label>진행 기간 종료일</label><input id="p-period-end" type="date"></div>
+      <div class="note-box" style="grid-column:1/-1; margin:0;">진행 기간을 지정하면 캘린더 탭에 마감일과 별개로 촬영/작업 기간이 막대 형태로 표시됩니다(선택 사항).</div>
       <div style="grid-column:1/-1"><label>현재 단계</label>
         <select id="p-stage"></select>
       </div>
@@ -941,6 +965,25 @@
     <div id="ippList" style="max-height:50vh; overflow-y:auto; display:flex; flex-direction:column; gap:4px;"></div>
     <div class="modal-footer">
       <button class="primary" onclick="closeImagePromptPicker()">닫기</button>
+    </div>
+  </div>
+</div>
+<!-- 캘린더 일정(자유 텍스트, 시작일~종료일 범위 지정 가능) 추가/수정 모달. 프로젝트 마감일과는 별개의 메모성 일정. -->
+<div class="modal-backdrop" id="calendarEventModalBackdrop">
+  <div class="modal" style="max-width:420px;">
+    <h2 id="calendarEventModalTitle">일정 추가</h2>
+    <input type="hidden" id="ce-id">
+    <div class="form-grid">
+      <div><label>시작일</label><input id="ce-start" type="date" onchange="calendarEventStartChanged_()"></div>
+      <div><label>종료일</label><input id="ce-end" type="date"></div>
+      <div style="grid-column:1/-1"><label>내용</label><textarea id="ce-text" rows="2" placeholder="예: 클라이언트 미팅, 사내 휴무일, 촬영 기간"></textarea></div>
+    </div>
+    <div class="modal-footer" style="justify-content:space-between;">
+      <button type="button" id="ce-delete-btn" onclick="deleteCalendarEvent()" style="display:none; color:var(--critical);">삭제</button>
+      <div style="display:flex; gap:8px; margin-left:auto;">
+        <button type="button" onclick="closeCalendarEventModal()">취소</button>
+        <button class="primary" onclick="saveCalendarEvent()">저장</button>
+      </div>
     </div>
   </div>
 </div>
@@ -1134,10 +1177,11 @@ function attachRealtimeListeners() {
       if (COLLECTIONS.every(c => snapshotsReady[c])) {
         const stageMigrated = migrateStageIndexForRevisionStage_(projects);
         const trashPurged = purgeExpiredTrash_();
+        const calNotesMigrated = migrateCalendarNoteSchemaV2_(calendarNotes);
         renderAll();
         showSyncStatus('실시간 동기화됨 · ' + new Date().toLocaleTimeString('ko-KR'));
         if (autoSaveSuppressed) autoSaveSuppressed = false;
-        if (stageMigrated || trashPurged) queueAutoSave();
+        if (stageMigrated || trashPurged || calNotesMigrated) queueAutoSave();
       }
     }, err => {
       showSyncStatus('동기화 오류: ' + err.message);
@@ -1553,12 +1597,15 @@ function openProjectModal(id) {
     document.getElementById('p-deadline').value = p.deadline;
     document.getElementById('p-director').value = p.director;
     document.getElementById('p-pd').value = p.pd;
+    document.getElementById('p-worker').value = p.worker || '';
     document.getElementById('p-quote').value = p.quoteAmount || '';
     document.getElementById('p-aicredits').value = p.aiCredits || '';
     document.getElementById('p-actualcost').value = p.actualCost || '';
+    document.getElementById('p-period-start').value = p.periodStart || '';
+    document.getElementById('p-period-end').value = p.periodEnd || '';
     document.getElementById('p-stage').value = p.stageIndex;
     document.getElementById('p-note').value = p.note || '';
-    const hasAdvancedData = !!(p.quoteAmount || p.aiCredits || p.actualCost || p.note || (p.stageIndex && p.stageIndex !== 0));
+    const hasAdvancedData = !!(p.quoteAmount || p.aiCredits || p.actualCost || p.note || p.periodStart || p.periodEnd || (p.stageIndex && p.stageIndex !== 0));
     setProjectAdvancedVisible(hasAdvancedData);
     document.getElementById('p-issues-section').style.display = '';
     document.getElementById('p-issue-input').value = '';
@@ -1566,7 +1613,7 @@ function openProjectModal(id) {
   } else {
     document.getElementById('projectModalTitle').textContent = '프로젝트 추가';
     document.getElementById('projectId').value = '';
-    ['p-name','p-client','p-director','p-pd','p-note','p-quote','p-aicredits','p-actualcost'].forEach(f => document.getElementById(f).value = '');
+    ['p-name','p-client','p-director','p-pd','p-worker','p-note','p-quote','p-aicredits','p-actualcost','p-period-start','p-period-end'].forEach(f => document.getElementById(f).value = '');
     document.getElementById('p-status').value = '검토중';
     document.getElementById('p-deadline').value = '';
     document.getElementById('p-stage').value = 0;
@@ -1597,13 +1644,22 @@ function saveProject() {
     deadline: document.getElementById('p-deadline').value,
     director: document.getElementById('p-director').value.trim(),
     pd: document.getElementById('p-pd').value.trim(),
+    worker: document.getElementById('p-worker').value.trim(),
     quoteAmount: parseFloat(document.getElementById('p-quote').value) || 0,
     aiCredits: parseFloat(document.getElementById('p-aicredits').value) || 0,
     actualCost: parseFloat(document.getElementById('p-actualcost').value) || 0,
+    periodStart: document.getElementById('p-period-start').value,
+    periodEnd: document.getElementById('p-period-end').value,
     stageIndex: parseInt(document.getElementById('p-stage').value, 10),
     note: document.getElementById('p-note').value.trim(),
   };
   if (!data.name) { showToast('프로젝트명을 입력하세요'); return; }
+  if (data.periodStart && data.periodEnd && data.periodEnd < data.periodStart) {
+    [data.periodStart, data.periodEnd] = [data.periodEnd, data.periodStart]; // 종료일이 시작일보다 빠르면 자동으로 순서만 바로잡음
+  }
+  if ((data.periodStart && !data.periodEnd) || (!data.periodStart && data.periodEnd)) {
+    showToast('진행 기간은 시작일과 종료일을 함께 입력해야 캘린더에 표시됩니다');
+  }
   if (id) {
     const p = projects.find(x => x.id === id);
     if (p.status !== data.status) logActivity_(`"${data.name}" 상태 변경: ${p.status} → ${data.status}`);
@@ -1903,7 +1959,7 @@ function renderBoard() {
       <td>${p.client}</td>
       <td><span class="pill ${statusPillClass(p.status)}">${p.status}</span></td>
       <td>${p.deadline || '-'} ${d !== null ? `<div style="font-size:11px;color:var(--text-muted)">${d<0?`${-d}일 지남`:'D-'+d}</div>`:''}</td>
-      <td><span class="pill director">${p.director||'-'}</span><br><span class="pill pd" style="margin-top:4px;display:inline-block;">${p.pd||'-'}</span></td>
+      <td><span class="pill director">${p.director||'-'}</span><br><span class="pill pd" style="margin-top:4px;display:inline-block;">${p.pd||'-'}</span>${p.worker ? `<br><span class="pill worker" style="margin-top:4px;display:inline-block;">${p.worker}</span>` : ''}</td>
       <td><div class="stage-track">${track}</div><div style="font-size:11px;color:var(--text-muted); margin-top:4px;">${STAGES[p.stageIndex].id} · ${STAGES[p.stageIndex].name}</div></td>
       <td style="font-size:12px;">${p.quoteAmount ? formatWon(p.quoteAmount) : '<span style="color:var(--text-muted);">견적 미입력</span>'}<div style="font-size:11px;color:var(--text-muted); margin-top:3px;">AI 크레딧 ${p.aiCredits ? p.aiCredits.toLocaleString('ko-KR') : 0} 사용</div></td>
       <td>
@@ -2011,15 +2067,20 @@ function renderWorkloadSummary() {
       const key = 'pd:' + p.pd;
       (counts[key] = counts[key] || {name: p.pd, role: 'PD', count: 0}).count++;
     }
+    if (p.worker) {
+      const key = 'worker:' + p.worker;
+      (counts[key] = counts[key] || {name: p.worker, role: '작업자', count: 0}).count++;
+    }
   });
   const rows = Object.values(counts).sort((a, b) => b.count - a.count);
+  const pillClassByRole_ = {'디렉터':'director', 'PD':'pd', '작업자':'worker'};
   el.innerHTML = rows.length ? rows.map(r => `
     <div style="display:flex; justify-content:space-between; align-items:center; padding:8px 0; border-bottom:1px solid var(--grid);">
-      <div><span class="pill ${r.role==='디렉터'?'director':'pd'}">${r.role}</span> <strong style="margin-left:6px;">${r.name}</strong></div>
+      <div><span class="pill ${pillClassByRole_[r.role]}">${r.role}</span> <strong style="margin-left:6px;">${r.name}</strong></div>
       <div style="font-size:12px; color:${r.count >= WORKLOAD_WARNING_THRESHOLD ? 'var(--critical)' : 'var(--text-secondary)'};">
         진행중 ${r.count}건 ${r.count >= WORKLOAD_WARNING_THRESHOLD ? '⚠ 과부하 우려' : ''}
       </div>
-    </div>`).join('') : `<div class="empty-state">담당자(디렉터/PD)가 지정된 진행중 프로젝트가 없습니다.</div>`;
+    </div>`).join('') : `<div class="empty-state">담당자(디렉터/PD/작업자)가 지정된 진행중 프로젝트가 없습니다.</div>`;
 }
 function renderTeam() {
   const part = document.getElementById('teamFilter').value;
@@ -2088,49 +2149,52 @@ function calendarGoToday() {
 function calendarDateKey_(y, m, d) {
   return `${y}-${String(m + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
 }
-// 달력 날짜 칸에 프로젝트 마감일과 별개로 자유 텍스트 메모를 남길 수 있다(예: "휴무", "OO 미팅", "촬영 예정").
-// 날짜당 메모 하나(진짜 여러 건이 필요하면 줄바꿈으로 이어 적으면 됨) — 굳이 목록 UI를 따로 만들지 않고
-// 칸 안 textarea 하나로 단순하게 유지했다.
-function findCalendarNote_(dateKey) {
-  return calendarNotes.find(n => n.date === dateKey);
-}
-function updateCalendarNote_(dateKey, text) {
-  const trimmed = (text || '').trim();
-  const existing = findCalendarNote_(dateKey);
-  if (!trimmed) {
-    if (existing) {
-      calendarNotes = calendarNotes.filter(n => n.id !== existing.id);
-      deletedIds.calendarNotes.push(existing.id);
+// 달력에는 두 종류의 "여러 날에 걸친 막대"가 표시된다 — ① 프로젝트의 진행 기간(periodStart~periodEnd,
+// 프로젝트 수정 모달의 상세옵션에서 설정) ② 캘린더 일정(calendarNotes, 이 탭의 "+ 일정 추가"로 등록,
+// 노션처럼 시작일~종료일 범위 지정 가능). 프로젝트 마감일(deadline)은 기존처럼 하루짜리 알약(cal-pill)으로
+// 날짜 숫자 칸 안에 별도 표시된다(진행 기간과는 다른 개념 — 진행 기간이 없어도 마감일만 있을 수 있음).
+
+// 예전 버전(캘린더 메모)은 날짜 하나(date)만 가진 단일 텍스트였다. 새 버전은 startDate~endDate 범위를 갖는다.
+// 기존에 저장된 항목이 있으면 한 번만 startDate=endDate=date로 변환해준다(자동, 눈에 안 띔).
+function migrateCalendarNoteSchemaV2_(notesList) {
+  let changed = false;
+  notesList.forEach(n => {
+    if (n.startDate && n.endDate) return;
+    if (n.date) {
+      n.startDate = n.date;
+      n.endDate = n.date;
+      n.updatedAt = Date.now();
+      changed = true;
     }
-  } else if (existing) {
-    if (existing.text === trimmed) return; // 실제로 바뀐 게 없으면 저장/재렌더링 생략
-    existing.text = trimmed;
-    existing.updatedAt = Date.now();
-  } else {
-    calendarNotes.push({ id: genId_('cnote'), date: dateKey, text: trimmed, updatedAt: Date.now() });
-  }
-  renderCalendarView();
-  queueAutoSave();
+  });
+  return changed;
 }
-// renderAssets()의 자료 카드와 같은 문제: 달력을 다시 그릴 때(다른 날짜 메모 저장, 실시간 동기화 등으로
-// renderCalendarView()가 호출되면) 마침 메모를 타이핑 중이던 textarea까지 통째로 새로 만들어지면서
-// 포커스와 커밋 전 입력값이 날아갈 수 있다. 다시 그리기 직전/직후에 포커스를 기억했다가 복원한다.
-function captureCalendarNoteFocus_(grid) {
-  const el = document.activeElement;
-  if (!el || !grid || !grid.contains(el) || !el.classList.contains('cal-note')) return null;
-  let selStart = null, selEnd = null;
-  try { selStart = el.selectionStart; selEnd = el.selectionEnd; } catch (e) {}
-  return { date: el.dataset.date, value: el.value, selStart, selEnd };
-}
-function restoreCalendarNoteFocus_(grid, captured) {
-  if (!captured || !grid) return;
-  const el = grid.querySelector(`.cal-note[data-date="${captured.date}"]`);
-  if (!el) return;
-  el.value = captured.value;
-  el.focus();
-  if (captured.selStart !== null && captured.selEnd !== null) {
-    try { el.setSelectionRange(captured.selStart, captured.selEnd); } catch (e) {}
-  }
+// 이번 달(monthStartKey~monthEndKey)과 겹치는 프로젝트 진행기간 + 캘린더 일정을 하나의 "막대" 목록으로 합치고,
+// 겹치는 막대끼리는 서로 다른 레인(행)에 배정한다(노션/구글캘린더 월간뷰와 같은 방식). 같은 일정이 여러 주에
+// 걸치면 레인 번호를 그대로 유지해서, 다음 줄로 넘어가도 같은 자리(같은 행)에 이어지는 것처럼 보이게 한다.
+function calendarBarItems_(monthStartKey, monthEndKey) {
+  const items = [];
+  projects.forEach(p => {
+    if (!p.periodStart || !p.periodEnd) return;
+    if (p.periodEnd < monthStartKey || p.periodStart > monthEndKey) return;
+    items.push({ start: p.periodStart, end: p.periodEnd, label: p.name, type: 'project', onclick: `openProjectModal('${p.id}')` });
+  });
+  calendarNotes.forEach(n => {
+    const s = n.startDate || n.date, e = n.endDate || n.date;
+    if (!s || !e) return;
+    if (e < monthStartKey || s > monthEndKey) return;
+    items.push({ start: s, end: e, label: n.text, type: 'note', onclick: `openCalendarEventModal('${n.id}')` });
+  });
+  // 시작일 빠른 순, 같은 시작일이면 기간이 긴 것부터(레인 배정이 더 안정적으로 보임)
+  items.sort((a, b) => a.start < b.start ? -1 : a.start > b.start ? 1 : (a.end < b.end ? 1 : a.end > b.end ? -1 : 0));
+  const laneEnds = []; // laneEnds[레인번호] = 그 레인에 마지막으로 배정된 막대의 종료일
+  items.forEach(item => {
+    let lane = laneEnds.findIndex(end => end < item.start);
+    if (lane === -1) { lane = laneEnds.length; laneEnds.push(item.end); }
+    else { laneEnds[lane] = item.end; }
+    item.lane = lane;
+  });
+  return items;
 }
 function renderCalendarView() {
   const grid = document.getElementById('calendarGrid');
@@ -2140,37 +2204,138 @@ function renderCalendarView() {
   const month = calendarCursor.getMonth(); // 0-11
   label.textContent = `${year}년 ${month + 1}월`;
   // 마감일별로 프로젝트를 미리 묶어둔다 (YYYY-MM-DD -> 프로젝트[])
-  const byDate = {};
+  const byDeadline = {};
   projects.forEach(p => {
     if (!p.deadline) return;
-    (byDate[p.deadline] = byDate[p.deadline] || []).push(p);
+    (byDeadline[p.deadline] = byDeadline[p.deadline] || []).push(p);
   });
   const firstDow = new Date(year, month, 1).getDay(); // 0=일요일
   const daysInMonth = new Date(year, month + 1, 0).getDate();
   const todayKey = calendarDateKey_(new Date().getFullYear(), new Date().getMonth(), new Date().getDate());
+  const monthStartKey = calendarDateKey_(year, month, 1);
+  const monthEndKey = calendarDateKey_(year, month, daysInMonth);
+  const barItems = calendarBarItems_(monthStartKey, monthEndKey);
   const dowNames = ['일', '월', '화', '수', '목', '금', '토'];
-  let html = dowNames.map(d => `<div class="cal-dow">${d}</div>`).join('');
-  for (let i = 0; i < firstDow; i++) html += `<div class="cal-cell empty"></div>`;
-  const activeEdit_ = captureCalendarNoteFocus_(grid);
+  let html = `<div class="cal-dow-row">${dowNames.map(d => `<div class="cal-dow">${d}</div>`).join('')}</div>`;
+  // 날짜를 한 주(7칸)씩 묶는다 — 월 시작 전/월 종료 후 빈 칸은 null
+  const weeks = [];
+  let week = new Array(firstDow).fill(null);
   for (let d = 1; d <= daysInMonth; d++) {
-    const key = calendarDateKey_(year, month, d);
-    const dayProjects = byDate[key] || [];
-    const isToday = key === todayKey;
-    const note = findCalendarNote_(key);
-    html += `<div class="cal-cell${isToday ? ' today' : ''}">
-      <div class="cal-date">${d}</div>
-      ${dayProjects.map(p => {
-        const active = p.status !== '수주' && p.status !== '실주';
-        const d = daysUntil(p.deadline);
-        const risky = active && d !== null && d <= DEADLINE_ALERT_THRESHOLD;
-        return `<div class="cal-pill${risky ? ' risk' : ''}" title="${p.name} (${p.client||'-'})" onclick="openProjectModal('${p.id}')">${p.name}</div>`;
-      }).join('')}
-      <textarea class="cal-note" data-date="${key}" rows="1" placeholder="+ 메모" onchange="updateCalendarNote_('${key}', this.value)">${note ? note.text.replace(/</g,'&lt;') : ''}</textarea>
-    </div>`;
+    week.push({ key: calendarDateKey_(year, month, d), d });
+    if (week.length === 7) { weeks.push(week); week = []; }
   }
-  grid.className = 'cal-grid';
+  if (week.length) { while (week.length < 7) week.push(null); weeks.push(week); }
+  weeks.forEach(weekArr => {
+    const weekKeys = weekArr.filter(Boolean).map(w => w.key);
+    const weekFirstKey = weekKeys[0];
+    const weekLastKey = weekKeys[weekKeys.length - 1];
+    const weekItems = weekFirstKey ? barItems.filter(it => it.end >= weekFirstKey && it.start <= weekLastKey) : [];
+    let maxLane = -1;
+    const barsHtml = weekItems.map(it => {
+      let startCol = -1, endCol = -1;
+      weekArr.forEach((w, idx) => {
+        if (!w || w.key < it.start || w.key > it.end) return;
+        if (startCol === -1) startCol = idx;
+        endCol = idx;
+      });
+      if (startCol === -1) return '';
+      maxLane = Math.max(maxLane, it.lane);
+      const isStart = weekArr[startCol].key === it.start;
+      const isEnd = weekArr[endCol].key === it.end;
+      const edgeCls = isStart && isEnd ? 'edge-solo' : isStart ? 'edge-start' : isEnd ? 'edge-end' : 'edge-mid';
+      const labelSafe = (it.label || '(제목 없음)').replace(/</g, '&lt;');
+      return `<div class="cal-event-bar type-${it.type} ${edgeCls}" style="grid-row:${it.lane + 2}; grid-column:${startCol + 1} / ${endCol + 2};" title="${labelSafe}" onclick="${it.onclick}">${labelSafe}</div>`;
+    }).join('');
+    const rowsStyle = maxLane >= 0 ? `grid-template-rows: auto repeat(${maxLane + 1}, 18px);` : 'grid-template-rows: auto;';
+    const daysHtml = weekArr.map((w, idx) => {
+      if (!w) return '';
+      const isToday = w.key === todayKey;
+      const dayProjects = byDeadline[w.key] || [];
+      const daybox = `<div class="cal-daybox${isToday ? ' today' : ''}" style="grid-column:${idx + 1};"></div>`;
+      const pillsHtml = dayProjects.map(p => {
+        const active = p.status !== '수주' && p.status !== '실주';
+        const dleft = daysUntil(p.deadline);
+        const risky = active && dleft !== null && dleft <= DEADLINE_ALERT_THRESHOLD;
+        return `<div class="cal-pill${risky ? ' risk' : ''}" title="${p.name} (${p.client||'-'})" onclick="event.stopPropagation(); openProjectModal('${p.id}')">${p.name}</div>`;
+      }).join('');
+      const daynum = `<div class="cal-daynum-cell${isToday ? ' today' : ''}" style="grid-column:${idx + 1};">
+        <div class="cal-date">${w.d}</div>
+        ${pillsHtml}
+        <div class="cal-add-row" onclick="openCalendarEventModal(null, '${w.key}')">+ 일정</div>
+      </div>`;
+      return daybox + daynum;
+    }).join('');
+    html += `<div class="cal-week" style="${rowsStyle}">${daysHtml}${barsHtml}</div>`;
+  });
   grid.innerHTML = html;
-  restoreCalendarNoteFocus_(grid, activeEdit_);
+}
+// ---------- 캘린더 일정 모달 (프로젝트 마감일과 별개의 자유 일정 — 시작일~종료일 범위 지정 가능) ----------
+function openCalendarEventModal(id, prefillDateKey) {
+  const startEl = document.getElementById('ce-start');
+  const endEl = document.getElementById('ce-end');
+  const textEl = document.getElementById('ce-text');
+  const deleteBtn = document.getElementById('ce-delete-btn');
+  if (id) {
+    const n = calendarNotes.find(x => x.id === id);
+    if (!n) return;
+    document.getElementById('calendarEventModalTitle').textContent = '일정 수정';
+    document.getElementById('ce-id').value = n.id;
+    startEl.value = n.startDate || n.date || '';
+    endEl.value = n.endDate || n.date || '';
+    textEl.value = n.text || '';
+    deleteBtn.style.display = '';
+  } else {
+    document.getElementById('calendarEventModalTitle').textContent = '일정 추가';
+    document.getElementById('ce-id').value = '';
+    const key = prefillDateKey || calendarDateKey_(new Date().getFullYear(), new Date().getMonth(), new Date().getDate());
+    startEl.value = key;
+    endEl.value = key;
+    textEl.value = '';
+    deleteBtn.style.display = 'none';
+  }
+  document.getElementById('calendarEventModalBackdrop').classList.add('active');
+  setTimeout(() => textEl.focus(), 50);
+}
+function closeCalendarEventModal() {
+  document.getElementById('calendarEventModalBackdrop').classList.remove('active');
+  applyPendingRemoteIfAny();
+}
+// 시작일을 종료일보다 뒤로 옮기면, 종료일도 같이 따라오게(직관적인 기본 동작)
+function calendarEventStartChanged_() {
+  const startEl = document.getElementById('ce-start');
+  const endEl = document.getElementById('ce-end');
+  if (endEl.value && endEl.value < startEl.value) endEl.value = startEl.value;
+}
+function saveCalendarEvent() {
+  const id = document.getElementById('ce-id').value;
+  let start = document.getElementById('ce-start').value;
+  let end = document.getElementById('ce-end').value || start;
+  const text = document.getElementById('ce-text').value.trim();
+  if (!start) { showToast('시작일을 입력하세요'); return; }
+  if (!text) { showToast('내용을 입력하세요'); return; }
+  if (end < start) { [start, end] = [end, start]; }
+  if (id) {
+    const n = calendarNotes.find(x => x.id === id);
+    if (!n) return;
+    n.startDate = start; n.endDate = end; n.text = text; n.updatedAt = Date.now();
+  } else {
+    calendarNotes.push({ id: genId_('cnote'), startDate: start, endDate: end, text, updatedAt: Date.now() });
+  }
+  closeCalendarEventModal();
+  renderCalendarView();
+  queueAutoSave();
+  showToast('저장되었습니다');
+}
+function deleteCalendarEvent() {
+  const id = document.getElementById('ce-id').value;
+  if (!id) return;
+  if (!confirm('이 일정을 삭제할까요?')) return;
+  calendarNotes = calendarNotes.filter(n => n.id !== id);
+  deletedIds.calendarNotes.push(id);
+  closeCalendarEventModal();
+  renderCalendarView();
+  queueAutoSave();
+  showToast('삭제되었습니다');
 }
 function renderAll() {
   renderOverview();
@@ -2345,7 +2510,8 @@ function buildAiProjectsContext_() {
     projects.forEach(p => {
       const stageInfo = STAGES[p.stageIndex];
       const stage = stageInfo ? `${stageInfo.id}. ${stageInfo.name}` : '미지정';
-      let line = `- ${p.name} | 클라이언트: ${p.client || '-'} | 입찰상태: ${p.status || '-'} | 마감일: ${p.deadline || '미정'} | 담당 디렉터: ${p.director || '-'} / PD: ${p.pd || '-'} | 현재 단계: ${stage}`;
+      let line = `- ${p.name} | 클라이언트: ${p.client || '-'} | 입찰상태: ${p.status || '-'} | 마감일: ${p.deadline || '미정'} | 담당 디렉터: ${p.director || '-'} / PD: ${p.pd || '-'} / 작업자: ${p.worker || '-'} | 현재 단계: ${stage}`;
+      if (p.periodStart && p.periodEnd) line += ` | 진행 기간: ${p.periodStart} ~ ${p.periodEnd}`;
       if (p.quoteAmount) line += ` | 견적: ${Number(p.quoteAmount).toLocaleString()}원`;
       line += ` | AI 크레딧 사용량: ${Number(p.aiCredits||0).toLocaleString()}`;
       if (p.actualCost) line += ` | 실제 투입 비용: ${Number(p.actualCost).toLocaleString()}원 | 마진: ${((p.quoteAmount||0)-p.actualCost).toLocaleString()}원`;
@@ -2567,12 +2733,18 @@ function applyAiAction_(action) {
         deadline: /^\d{4}-\d{2}-\d{2}$/.test(action.deadline || '') ? action.deadline : '',
         director: action.director ? String(action.director).trim() : '',
         pd: action.pd ? String(action.pd).trim() : '',
+        worker: action.worker ? String(action.worker).trim() : '',
         quoteAmount: Number(action.quoteAmount) || 0,
         aiCredits: Number(action.aiCredits) || 0,
         actualCost: Number(action.actualCost) || 0,
+        periodStart: /^\d{4}-\d{2}-\d{2}$/.test(action.periodStart || '') ? action.periodStart : '',
+        periodEnd: /^\d{4}-\d{2}-\d{2}$/.test(action.periodEnd || '') ? action.periodEnd : '',
         stageIndex: resolveStageIndex_(action.stage) !== -1 ? resolveStageIndex_(action.stage) : 0,
         note: action.note ? String(action.note).trim() : '',
       };
+      if (data.periodStart && data.periodEnd && data.periodEnd < data.periodStart) {
+        [data.periodStart, data.periodEnd] = [data.periodEnd, data.periodStart];
+      }
       projects.push({ id: genId_('p'), blockedStages: [], blockReason: '', issues: [], ...data, updatedAt: Date.now() });
       logActivity_(`🤖 AI가 "${data.name}" 프로젝트를 추가함`);
       renderAll();
@@ -2593,9 +2765,15 @@ function applyAiAction_(action) {
       if (/^\d{4}-\d{2}-\d{2}$/.test(fields.deadline || '')) patch.deadline = fields.deadline;
       if (typeof fields.director === 'string') patch.director = fields.director.trim();
       if (typeof fields.pd === 'string') patch.pd = fields.pd.trim();
+      if (typeof fields.worker === 'string') patch.worker = fields.worker.trim();
       if (fields.quoteAmount !== undefined) patch.quoteAmount = Number(fields.quoteAmount) || 0;
       if (fields.aiCredits !== undefined) patch.aiCredits = Number(fields.aiCredits) || 0;
       if (fields.actualCost !== undefined) patch.actualCost = Number(fields.actualCost) || 0;
+      if (/^\d{4}-\d{2}-\d{2}$/.test(fields.periodStart || '')) patch.periodStart = fields.periodStart;
+      if (/^\d{4}-\d{2}-\d{2}$/.test(fields.periodEnd || '')) patch.periodEnd = fields.periodEnd;
+      if (patch.periodStart && patch.periodEnd && patch.periodEnd < patch.periodStart) {
+        [patch.periodStart, patch.periodEnd] = [patch.periodEnd, patch.periodStart];
+      }
       if (typeof fields.note === 'string') patch.note = fields.note.trim();
       const stageIdx = resolveStageIndex_(fields.stage);
       if (stageIdx !== -1) patch.stageIndex = stageIdx;
