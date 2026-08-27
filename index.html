@@ -3403,14 +3403,26 @@ function handleAiInputKeydown(evt) {
 // 일부 reasoning 모델(qwen3 계열 등)은 실제 답변 앞에 <think>...내부 추론...</think> 블록을 그대로
 // 남겨서 보내는 경우가 있다. 서버(프록시)에서 걸러주긴 하지만, 혹시 못 걸러진 게 그대로 넘어와도
 // 화면(요약/채팅)에 원문 추론이 노출되거나 그 안의 { } 때문에 JSON 인식이 꼬이지 않도록 클라이언트에서도 한 번 더 제거한다.
+// 모델이 추론 도중 토큰 한도에 걸려 </think>를 못 닫고 끝나버리는 경우도 있는데(글자 수 제약을 맞추려고
+// 후보 문구를 계속 다시 쓰다가 응답이 끊기는 패턴 등), 그러면 정규식이 매칭 자체를 못 해서 수 KB짜리
+// 추론 원문이 그대로 남는다 — 그 뒤에 실제 JSON 답변이 없는 게 확실하므로, 닫히지 않은 <think>가 있으면
+// 그 지점부터는 통째로 버린다(그 앞부분만 남김. 보통은 앞부분이 비어있어 결과적으로 빈 문자열이 됨).
 function stripAiThinking_(text) {
-  return String(text || '').replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
+  let out = String(text || '').replace(/<think>[\s\S]*?<\/think>/gi, '');
+  const openIdx = out.search(/<think>/i);
+  if (openIdx !== -1) out = out.slice(0, openIdx);
+  return out.trim();
 }
 // 텍스트 안에서 중괄호 짝을 문자 단위로 직접 맞춰가며(문자열 안의 중괄호는 무시) 유효한 JSON 객체를 찾는다.
-// requiredKey를 주면 그 키를 가진 첫 결과만 인정한다. 없으면 null.
+// requiredKeys를 문자열 하나 또는 배열로 주면 그 키(들)를 전부 가진 첫 결과만 인정한다. 없으면 null.
 // (단순히 첫 '{'~마지막 '}' 를 통째로 잡는 정규식은, 그 사이에 상관없는 다른 중괄호가 하나라도 끼어있으면
 //  깨진 JSON을 만들어버려서 아예 인식을 못 하는 문제가 있었다 — 특히 AI가 추론 과정을 같이 내보낼 때 잘 걸림.)
+// 주의: requiredKey를 하나만(예: "name") 주면, 추론문 안에 섞여있는 다른 용도의 작은 JSON 조각
+// (예: 태그 초안 {"category":"...","name":"..."})이 먼저 매칭돼서 진짜 답변 대신 잘못 채택되는 사고가
+// 있었다(이미지 분석 결과의 태그/설명이 자꾸 비어서 등록되는 문제로 나타남). 그래서 실제로 기대하는
+// 필드가 여러 개인 응답(name+tags+summary+description 등)은 반드시 그 키들을 전부 배열로 넘겨야 한다.
 function findJsonObject_(text, requiredKey) {
+  const requiredKeys = requiredKey ? (Array.isArray(requiredKey) ? requiredKey : [requiredKey]) : [];
   for (let i = 0; i < text.length; i++) {
     if (text[i] !== '{') continue;
     let depth = 0, inStr = false, esc = false, end = -1;
@@ -3429,7 +3441,7 @@ function findJsonObject_(text, requiredKey) {
     if (end === -1) continue;
     try {
       const obj = JSON.parse(text.slice(i, end + 1));
-      if (obj && typeof obj === 'object' && (!requiredKey || typeof obj[requiredKey] !== 'undefined')) {
+      if (obj && typeof obj === 'object' && requiredKeys.every(k => typeof obj[k] !== 'undefined')) {
         return { obj, start: i, end: end + 1 };
       }
     } catch (e) { /* JSON이 아니거나 필요한 키가 없으면 다음 '{' 후보로 계속 */ }
@@ -4282,7 +4294,9 @@ function analyzeImageWithAi_(dataUrl) {
       // 중괄호 짝을 직접 맞춰가며 JSON을 찾는다(단순 첫~마지막 중괄호 매칭은 추론문 안의 다른 중괄호 때문에
       // JSON이 깨져서 파싱에 통째로 실패하는 문제가 있었음 — 그러면 아래 summary 폴백이 추론 원문 전체가 되어버림).
       const cleanedReply = stripAiThinking_(data.reply);
-      const found = findJsonObject_(cleanedReply);
+      // name/tags/summary/description을 전부 가진 객체만 인정한다 — 추론문 안에 섞인 태그 초안 조각
+      // (예: {"category":"...","name":"..."})이 먼저 매칭돼서 잘못 채택되는 걸 막기 위함.
+      const found = findJsonObject_(cleanedReply, ['name', 'tags', 'summary', 'description']);
       const parsed = found ? found.obj : null;
       // AI 응답에서 JSON을 아예 못 찾았으면(모델이 형식을 안 지켰거나, 비전 모델이 이미지를 제대로 못 받아
       // 엉뚱한 텍스트만 돌려준 경우 등) 이름/태그/설명이 전부 빈 채로 "분석 성공"처럼 취급하지 않는다.
@@ -4315,7 +4329,7 @@ function analyzeImageWithAi_(dataUrl) {
       return {
         name: (parsed.name && String(parsed.name).trim()) || '',
         tags: tagNames,
-        summary: (parsed.summary && String(parsed.summary).trim()) || cleanedReply || (data.reply || '').trim(),
+        summary: (parsed.summary && String(parsed.summary).trim()) || (cleanedReply || (data.reply || '').trim()).slice(0, 200),
         description: (parsed.description && String(parsed.description).trim()) || '',
       };
     });
@@ -4621,12 +4635,15 @@ function analyzePromptWithAi_(text) {
     .then(data => {
       if (data.error) throw new Error(data.error);
       const cleanedReply = stripAiThinking_(data.reply);
-      const found = findJsonObject_(cleanedReply);
+      // name/tags/summary/description을 전부 가진 객체만 인정한다(이미지 분석과 동일한 이유 — analyzeImageWithAi_ 주석 참고).
+      const found = findJsonObject_(cleanedReply, ['name', 'tags', 'summary', 'description']);
       const parsed = found ? found.obj : null;
+      // 그래도 JSON을 못 찾은 경우의 최후 폴백(summary만이라도 채워서 사용자가 원문을 볼 수 있게)은
+      // 남겨두되, 길이를 짧게 잘라서 혹시라도 추론 원문이 새더라도 채팅 이력/자료에 통째로 쌓이지 않게 한다.
       return {
         name: (parsed && parsed.name && String(parsed.name).trim()) || '',
         tags: (parsed && Array.isArray(parsed.tags)) ? parsed.tags.map(t => String(t).trim()).filter(Boolean) : [],
-        summary: (parsed && parsed.summary && String(parsed.summary).trim()) || cleanedReply || (data.reply || '').trim(),
+        summary: (parsed && parsed.summary && String(parsed.summary).trim()) || (cleanedReply || (data.reply || '').trim()).slice(0, 200),
         description: (parsed && parsed.description && String(parsed.description).trim()) || '',
       };
     });
