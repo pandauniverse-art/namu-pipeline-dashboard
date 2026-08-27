@@ -999,9 +999,12 @@
         <select id="as-linkedprompts" multiple style="height:80px;"></select>
       </div>
       <div style="grid-column:1/-1; display:none" id="as-video-field">
-        <label>영상 링크 (URL)</label>
+        <label>영상 파일 업로드 (회사 구글 드라이브에 저장됨)</label>
+        <input id="as-videofile" type="file" accept="video/*" onchange="handleVideoFileSelected_()">
+        <div id="as-video-upload-progress" style="display:none; margin-top:6px; font-size:11px; color:var(--text-muted);"></div>
+        <label style="margin-top:10px;">또는 영상 링크 직접 입력 (URL)</label>
         <input id="as-videourl" placeholder="예: https://drive.google.com/... 또는 유튜브 링크">
-        <div style="font-size:11px; color:var(--text-muted); margin-top:4px;">유튜브 링크(youtube.com, youtu.be)를 넣으면 카드에서 바로 재생할 수 있어요. 그 외 링크는 클릭 시 새 탭에서 열립니다.</div>
+        <div style="font-size:11px; color:var(--text-muted); margin-top:4px;">파일을 올리면 회사 구글 드라이브에 저장되고 링크가 자동으로 채워집니다. 이미 다른 곳에 올려둔 영상이 있다면 위 파일 선택 대신 링크만 붙여넣어도 됩니다. 유튜브 링크(youtube.com, youtu.be)는 카드에서 바로 재생할 수 있어요.</div>
       </div>
       <div style="grid-column:1/-1; display:none" id="as-prompt-field">
         <label>프롬프트 내용</label>
@@ -1343,6 +1346,96 @@ function callAiProxy_(url, payload) {
     },
     body: JSON.stringify(payload),
   }));
+}
+// ---------- 영상 자료 업로드 (구글 드라이브) ----------
+// 영상 파일은 이미지처럼 GitHub에 커밋하기엔 너무 크고(GitHub API는 사실상 100MB가 한계이고 저장소도
+// 계속 커짐), Vercel 프록시를 거치기엔 서버리스 함수 요청 본문 제한(4.5MB)에 바로 걸린다. 그래서 영상은
+// 로그인한 사용자의 구글 계정 권한으로 브라우저에서 곧바로 구글 드라이브로 업로드한다(서버를 거치지 않음).
+// 관리자가 아래 두 값을 실제 값으로 채워 넣어야 동작한다:
+//   1) DRIVE_UPLOAD_FOLDER_ID_: 영상이 저장될 구글 드라이브 폴더 ID
+//      (드라이브에서 그 폴더를 연 상태의 주소창에서 .../folders/ 뒤에 오는 문자열)
+//   2) 그 폴더 자체의 공유 설정 — "namucreative.com 조직 내에서 링크가 있는 사용자"로 미리 공유해둘 것
+// 비어있는 동안은 업로드 버튼을 눌러도 안내 메시지만 뜨고 실제로는 아무 일도 일어나지 않는다.
+const DRIVE_UPLOAD_FOLDER_ID_ = ''; // 예: '1AbCdEfGhIjKlMnOpQrStUvWxYz2345678'
+const DRIVE_UPLOAD_SCOPE_ = 'https://www.googleapis.com/auth/drive.file'; // 이 앱이 만든 파일에만 접근하는 최소 권한 범위
+// 로그인할 때 받아둔 구글 OAuth 액세스 토큰(드라이브 API 호출용, Firebase ID 토큰과는 다른 것). 새로고침하면
+// 사라지고, 유효시간도 대략 1시간이라 만료되면 다시 받아와야 한다 — 아래 getDriveAccessToken_()이 그 처리를 담당.
+let driveAccessToken_ = null;
+let driveAccessTokenExpiresAt_ = 0;
+function rememberDriveAccessTokenFromResult_(result) {
+  const cred = firebase.auth.GoogleAuthProvider.credentialFromResult(result);
+  if (cred && cred.accessToken) {
+    driveAccessToken_ = cred.accessToken;
+    driveAccessTokenExpiresAt_ = Date.now() + 55 * 60 * 1000; // 보통 1시간 유효 — 여유를 두고 55분으로 잡음
+  }
+}
+// 지금 갖고 있는 토큰이 아직 유효하면 그대로 쓰고, 없거나 만료됐으면(새로고침 직후 등) 로그인 팝업을 한 번
+// 더 띄워서 새로 받아온다. 이미 한 번 동의한 권한이라 보통 계정 선택 정도로 빠르게 끝난다.
+function getDriveAccessToken_() {
+  if (driveAccessToken_ && Date.now() < driveAccessTokenExpiresAt_) return Promise.resolve(driveAccessToken_);
+  const provider = new firebase.auth.GoogleAuthProvider();
+  provider.setCustomParameters({ hd: ALLOWED_EMAIL_DOMAIN });
+  provider.addScope(DRIVE_UPLOAD_SCOPE_);
+  return fbAuth.currentUser.reauthenticateWithPopup(provider).then(result => {
+    rememberDriveAccessTokenFromResult_(result);
+    if (!driveAccessToken_) throw new Error('구글 드라이브 접근 권한을 가져오지 못했습니다. 팝업 차단을 확인해주세요.');
+    return driveAccessToken_;
+  });
+}
+// 구글 드라이브 Resumable Upload API로 영상 파일을 올린다. 서버(Vercel/Firestore)를 거치지 않고
+// 브라우저 → 구글 API로 바로 전송되므로, 이 앱의 다른 업로드 경로들에 걸려있던 용량 제한과 무관하다.
+// onProgress(0~100)로 진행률을 전달하고, 완료되면 { ok:true, url, fileId }를, 실패하면 { ok:false, error }를 돌려준다.
+function uploadVideoFileToDrive_(file, onProgress) {
+  if (!DRIVE_UPLOAD_FOLDER_ID_) {
+    return Promise.resolve({ ok: false, error: '아직 구글 드라이브 업로드 폴더가 설정되지 않았습니다. 관리자에게 문의해주세요.' });
+  }
+  return getDriveAccessToken_().then(token => {
+    const metadata = { name: file.name, parents: [DRIVE_UPLOAD_FOLDER_ID_] };
+    // 1) resumable 업로드 세션을 먼저 연다 (실제 파일 바이트는 아직 안 보냄)
+    return fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable', {
+      method: 'POST',
+      headers: {
+        Authorization: 'Bearer ' + token,
+        'Content-Type': 'application/json; charset=UTF-8',
+        'X-Upload-Content-Type': file.type || 'video/mp4',
+      },
+      body: JSON.stringify(metadata),
+    }).then(r => {
+      if (!r.ok) throw new Error(`업로드 세션 생성 실패 (${r.status})`);
+      const sessionUrl = r.headers.get('Location');
+      if (!sessionUrl) throw new Error('업로드 세션 주소를 받지 못했습니다.');
+      // 2) 실제 파일 바이트를 그 세션 주소로 전송한다. 진행률 표시를 위해 fetch 대신 XHR을 쓴다.
+      return new Promise((resolve, reject) => {
+        const xhr = new XMLHttpRequest();
+        xhr.open('PUT', sessionUrl, true);
+        xhr.setRequestHeader('Content-Type', file.type || 'video/mp4');
+        xhr.upload.onprogress = e => {
+          if (onProgress && e.lengthComputable) onProgress(Math.round((e.loaded / e.total) * 100));
+        };
+        xhr.onload = () => {
+          if (xhr.status >= 200 && xhr.status < 300) {
+            try { resolve(JSON.parse(xhr.responseText)); }
+            catch (e) { reject(new Error('업로드 응답을 이해하지 못했습니다.')); }
+          } else {
+            reject(new Error(`업로드 실패 (${xhr.status}) — 토큰이 업로드 도중 만료됐다면 다시 시도해주세요.`));
+          }
+        };
+        xhr.onerror = () => reject(new Error('네트워크 오류로 업로드에 실패했습니다.'));
+        xhr.send(file);
+      });
+    });
+  }).then(uploaded => {
+    const fileId = uploaded.id;
+    // 3) 폴더 자체를 미리 조직 전체에 공유해뒀더라도(상속이 항상 보장되진 않아서) 파일 단위로도
+    // 명시적으로 도메인 전체 읽기 권한을 걸어둔다 — drive.file 권한 범위 안에서, 이 앱이 만든 파일이라 가능하다.
+    return getDriveAccessToken_().then(token =>
+      fetch(`https://www.googleapis.com/drive/v3/files/${fileId}/permissions`, {
+        method: 'POST',
+        headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ role: 'reader', type: 'domain', domain: ALLOWED_EMAIL_DOMAIN }),
+      }).catch(() => null) // 권한 설정이 실패해도(예: 폴더 상속으로 이미 보이는 경우) 업로드 자체는 성공으로 처리
+    ).then(() => ({ ok: true, url: `https://drive.google.com/file/d/${fileId}/view`, fileId }));
+  }).catch(err => ({ ok: false, error: err.message }));
 }
 let autoSaveTimer = null;
 // 자동저장이 실패했을 때(네트워크 순간 끊김 등) 사용자가 다시 뭔가 고치기 전까지는 재시도가 안 되던
@@ -1836,7 +1929,10 @@ function renderTrash() {
 function signInWithGoogle() {
   const provider = new firebase.auth.GoogleAuthProvider();
   provider.setCustomParameters({ hd: ALLOWED_EMAIL_DOMAIN });
-  fbAuth.signInWithPopup(provider).catch(err => {
+  provider.addScope(DRIVE_UPLOAD_SCOPE_); // 영상 파일을 구글 드라이브로 올릴 때 필요한 권한을 로그인 시점에 같이 받아둔다
+  fbAuth.signInWithPopup(provider).then(result => {
+    rememberDriveAccessTokenFromResult_(result);
+  }).catch(err => {
     document.getElementById('authGateMsg').textContent = '로그인 실패: ' + err.message;
   });
 }
@@ -4741,7 +4837,11 @@ function openAssetModal() {
   document.getElementById('as-type').value = 'image';
   document.getElementById('as-name').value = '';
   document.getElementById('as-imagefile').value = '';
+  document.getElementById('as-videofile').value = '';
   document.getElementById('as-videourl').value = '';
+  document.getElementById('as-videourl').disabled = false;
+  document.getElementById('as-video-upload-progress').style.display = 'none';
+  videoUploadInProgress_ = false;
   document.getElementById('as-prompttext').value = '';
   document.getElementById('as-description').value = '';
   document.getElementById('as-ai-summarize').checked = true;
@@ -4761,6 +4861,34 @@ function toggleAssetTypeFields() {
   document.getElementById('as-prompt-field').style.display = type === 'prompt' ? '' : 'none';
   document.getElementById('as-ai-summarize-field').style.display = (type === 'video' || type === 'prompt' || type === 'image') ? '' : 'none';
 }
+// 영상 파일을 고르면 바로 구글 드라이브 업로드를 시작한다("저장" 버튼을 누를 때가 아니라 파일 선택 시점).
+// 끝나면 링크 입력란에 업로드된 드라이브 링크를 자동으로 채워넣어서, 그 아래 "저장" 로직은
+// 기존에 링크를 직접 붙여넣었을 때와 완전히 똑같이 동작한다(별도 분기 필요 없음).
+let videoUploadInProgress_ = false;
+function handleVideoFileSelected_() {
+  const fileInput = document.getElementById('as-videofile');
+  const file = fileInput.files[0];
+  if (!file) return;
+  const progressEl = document.getElementById('as-video-upload-progress');
+  const urlInput = document.getElementById('as-videourl');
+  videoUploadInProgress_ = true;
+  urlInput.value = '';
+  urlInput.disabled = true;
+  progressEl.style.display = 'block';
+  progressEl.textContent = `"${file.name}" 업로드 준비 중…`;
+  uploadVideoFileToDrive_(file, pct => { progressEl.textContent = `"${file.name}" 업로드 중… ${pct}%`; })
+    .then(result => {
+      videoUploadInProgress_ = false;
+      urlInput.disabled = false;
+      if (!result.ok) {
+        progressEl.textContent = `⚠️ 업로드 실패: ${result.error}`;
+        fileInput.value = '';
+        return;
+      }
+      urlInput.value = result.url;
+      progressEl.textContent = `✅ "${file.name}" 업로드 완료 (아래 저장 버튼을 눌러 자료로 등록하세요)`;
+    });
+}
 function saveAssetFromModal() {
   const type = document.getElementById('as-type').value;
   const name = document.getElementById('as-name').value.trim();
@@ -4769,8 +4897,9 @@ function saveAssetFromModal() {
   const description = document.getElementById('as-description').value.trim();
   const wantAiSummary = !!document.getElementById('as-ai-summarize').checked;
   if (type === 'video') {
+    if (videoUploadInProgress_) { showToast('영상 업로드가 아직 끝나지 않았습니다. 완료된 뒤에 저장해주세요.'); return; }
     const url = document.getElementById('as-videourl').value.trim();
-    if (!url) { showToast('영상 링크를 입력하세요'); return; }
+    if (!url) { showToast('영상 파일을 올리거나 링크를 입력하세요'); return; }
     // 같은 링크가 이미 등록되어 있으면 실수로 두 번 등록하는 걸 막기 위해 한 번 확인한다.
     const dupVideo = assets.find(a => a.type === 'video' && (a.url || '').trim().toLowerCase() === url.toLowerCase());
     if (dupVideo && !confirm(`이미 같은 영상 링크가 "${dupVideo.name}"(으)로 등록되어 있습니다. 그래도 추가할까요?`)) return;
