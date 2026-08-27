@@ -387,7 +387,6 @@
     <button onclick="exportData()">⬇ 내보내기(JSON)</button>
     <button onclick="document.getElementById('importFile').click()">⬆ 가져오기</button>
     <input type="file" id="importFile" accept="application/json" style="display:none" onchange="importData(event)">
-    <button class="primary" onclick="openProjectModal()">+ 프로젝트 추가</button>
   </div>
 </header>
 <nav class="tabs">
@@ -422,6 +421,7 @@
   <!-- PROJECT BOARD -->
   <section class="tabpanel" id="tab-board">
     <div class="filter-row">
+      <button class="primary" onclick="openProjectModal()">+ 프로젝트 추가</button>
       <select id="filterStatus" onchange="renderBoard()">
         <option value="">전체 입찰상태</option>
         <option value="검토중">검토중</option>
@@ -447,7 +447,7 @@
         </thead>
         <tbody id="boardBody"></tbody>
       </table>
-      <div class="empty-state" id="boardEmpty" style="display:none">등록된 프로젝트가 없습니다. 우측 상단 '프로젝트 추가'로 시작하세요.</div>
+      <div class="empty-state" id="boardEmpty" style="display:none">등록된 프로젝트가 없습니다. 위 '+ 프로젝트 추가'로 시작하세요.</div>
     </div>
   </section>
   <!-- WORK STATUS -->
@@ -1197,6 +1197,10 @@ function logActivity_(text) {
 function renderActivityLog() {
   const el = document.getElementById('activityLogView');
   if (!el) return;
+  if (!canViewActivityLog_()) {
+    el.innerHTML = `<div class="empty-state">🔒 최근 활동 로그는 관리자 이상만 볼 수 있습니다.</div>`;
+    return;
+  }
   const rows = activityLog.slice().sort((a, b) => (b.at || 0) - (a.at || 0)).slice(0, 100);
   el.innerHTML = rows.length ? rows.map(l => `
     <div style="display:flex; justify-content:space-between; gap:12px; padding:6px 0; border-bottom:1px solid var(--grid); font-size:12.5px;">
@@ -1283,6 +1287,9 @@ function canEditSensitiveFields_() { return tierAtLeast_('manager'); } // 견적
 function canViewSensitiveFields_() { return tierAtLeast_('manager'); }
 function canDeleteProject_() { return tierAtLeast_('manager'); }
 function canManageTrash_() { return tierAtLeast_('manager'); } // 휴지통 비우기 / 영구 삭제
+// 최근 활동 로그(상태변경/보류/AI 자동반영 등 내부 운영 기록)도 대표·관리자만 볼 수 있어야 한다는 요청에 따라
+// 별도 함수로 분리. 지금은 canViewSensitiveFields_와 기준(관리자 이상)이 같지만 의미가 다르므로 분리해둔다.
+function canViewActivityLog_() { return tierAtLeast_('manager'); }
 // 관리자 이상(대표/관리자) 등급인 사람이 활성 상태로 최소 1명은 항상 남아있어야 한다 — 그래야
 // "팀원 관리" 화면에 아무도 못 들어가는 상황을 피할 수 있다. 등급 변경/비활성화 시 이 함수로 확인한다.
 function isLastActiveAdmin_(u) {
@@ -2570,6 +2577,16 @@ function migrateCalendarNoteSchemaV2_(notesList) {
   });
   return changed;
 }
+// 달력의 막대/알약 색상을 프로젝트(또는 일정)별로 다르게 배정한다 — 예전엔 전부 파란색 한 가지였는데,
+// 겹치는 여러 프로젝트/일정을 구분하기 어렵다는 요청에 따라 팔레트에서 순환 배정한다. 같은 id는 항상
+// 같은 색이 나오도록 문자열 해시로 결정하므로(랜덤 아님), 달을 넘겨도 같은 프로젝트는 계속 같은 색으로 보인다.
+const CALENDAR_COLOR_PALETTE_ = ['--series-1', '--series-2', '--series-3', '--series-6', '--series-7', '--series-8', '--series-9'];
+function calendarColorVar_(id) {
+  const s = String(id || '');
+  let hash = 0;
+  for (let i = 0; i < s.length; i++) { hash = (hash * 31 + s.charCodeAt(i)) >>> 0; }
+  return CALENDAR_COLOR_PALETTE_[hash % CALENDAR_COLOR_PALETTE_.length];
+}
 // 이번 달(monthStartKey~monthEndKey)과 겹치는 프로젝트 진행기간 + 캘린더 일정을 하나의 "막대" 목록으로 합치고,
 // 겹치는 막대끼리는 서로 다른 레인(행)에 배정한다(노션/구글캘린더 월간뷰와 같은 방식). 같은 일정이 여러 주에
 // 걸치면 레인 번호를 그대로 유지해서, 다음 줄로 넘어가도 같은 자리(같은 행)에 이어지는 것처럼 보이게 한다.
@@ -2578,7 +2595,7 @@ function calendarBarItems_(monthStartKey, monthEndKey) {
   projects.forEach(p => {
     if (!p.periodStart || !p.periodEnd) return;
     if (p.periodEnd < monthStartKey || p.periodStart > monthEndKey) return;
-    items.push({ start: p.periodStart, end: p.periodEnd, label: p.name, type: 'project', onclick: `openProjectModal('${p.id}')` });
+    items.push({ start: p.periodStart, end: p.periodEnd, label: p.name, type: 'project', onclick: `openProjectModal('${p.id}')`, colorVar: calendarColorVar_(p.id) });
   });
   calendarNotes.forEach(n => {
     const s = n.startDate || n.date, e = n.endDate || n.date;
@@ -2589,6 +2606,8 @@ function calendarBarItems_(monthStartKey, monthEndKey) {
       start: s, end: e, label: n.text, type: 'note', onclick: `openCalendarEventModal('${n.id}')`,
       tooltip: linkedProject ? `${n.text} (연결: ${linkedProject.name})` : n.text,
       linked: !!linkedProject,
+      // 연결된 프로젝트가 있으면 그 프로젝트와 같은 색으로 맞춰 한눈에 연관성이 보이게 하고, 없으면 일정 자체 id로 색을 정한다.
+      colorVar: calendarColorVar_(linkedProject ? linkedProject.id : n.id),
     });
   });
   // 시작일 빠른 순, 같은 시작일이면 기간이 긴 것부터(레인 배정이 더 안정적으로 보임)
@@ -2651,7 +2670,7 @@ function renderCalendarView() {
       const edgeCls = isStart && isEnd ? 'edge-solo' : isStart ? 'edge-start' : isEnd ? 'edge-end' : 'edge-mid';
       const labelSafe = escapeHtml_(it.label || '(제목 없음)');
       const titleSafe = escapeHtml_(it.tooltip || it.label || '(제목 없음)');
-      return `<div class="cal-event-bar type-${it.type} ${edgeCls}" style="grid-row:${it.lane + 2}; grid-column:${startCol + 1} / ${endCol + 2};" title="${titleSafe}" onclick="${it.onclick}">${it.linked ? '🔗 ' : ''}${labelSafe}</div>`;
+      return `<div class="cal-event-bar type-${it.type} ${edgeCls}" style="grid-row:${it.lane + 2}; grid-column:${startCol + 1} / ${endCol + 2}; background:var(${it.colorVar});" title="${titleSafe}" onclick="${it.onclick}">${it.linked ? '🔗 ' : ''}${labelSafe}</div>`;
     }).join('');
     const rowsStyle = maxLane >= 0 ? `grid-template-rows: auto repeat(${maxLane + 1}, 18px);` : 'grid-template-rows: auto;';
     const daysHtml = weekArr.map((w, idx) => {
@@ -2663,7 +2682,9 @@ function renderCalendarView() {
         const active = p.status !== '수주' && p.status !== '실주';
         const dleft = daysUntil(p.deadline);
         const risky = active && dleft !== null && dleft <= DEADLINE_ALERT_THRESHOLD;
-        return `<div class="cal-pill${risky ? ' risk' : ''}" title="${escapeHtml_(p.name)} (${escapeHtml_(p.client)||'-'})" onclick="event.stopPropagation(); openProjectModal('${p.id}')">${escapeHtml_(p.name)}</div>`;
+        // 마감 임박(risky)일 땐 위험 신호가 우선이므로 빨간색(.risk)을 유지하고, 그 외엔 프로젝트별 색으로 구분한다.
+        const pillStyle = risky ? '' : ` style="background:var(${calendarColorVar_(p.id)});"`;
+        return `<div class="cal-pill${risky ? ' risk' : ''}"${pillStyle} title="${escapeHtml_(p.name)} (${escapeHtml_(p.client)||'-'})" onclick="event.stopPropagation(); openProjectModal('${p.id}')">${escapeHtml_(p.name)}</div>`;
       }).join('');
       const daynum = `<div class="cal-daynum-cell${isToday ? ' today' : ''}" style="grid-column:${idx + 1};">
         <div class="cal-date">${w.d}</div>
@@ -5070,7 +5091,7 @@ function importData(evt) {
 const ONBOARDING_STORAGE_KEY = 'namu_pipeline_onboarding_dismissed_v1';
 const ONBOARDING_STEPS = [
   { title: '나무씨 파이프라인 대시보드에 오신 걸 환영합니다', body: '프로젝트/작업 현황을 실시간으로 함께 확인하고 편집하는 공간입니다. 4단계면 충분해요 — 바로 시작해볼까요?' },
-  { title: '① 프로젝트 보드', body: '상단 "프로젝트 보드" 탭에서 진행 중인 프로젝트를 카드로 보고, 우측 상단 "+ 프로젝트 추가"로 새 프로젝트를 등록할 수 있어요. 처음엔 이름/클라이언트/마감일 정도만 입력해도 충분합니다.' },
+  { title: '① 프로젝트 보드', body: '상단 "프로젝트 보드" 탭에서 진행 중인 프로젝트를 카드로 보고, 탭 안의 "+ 프로젝트 추가"로 새 프로젝트를 등록할 수 있어요. 처음엔 이름/클라이언트/마감일 정도만 입력해도 충분합니다.' },
   { title: '② 작업 진행 현황', body: '"작업 진행 현황" 탭에서 프로젝트별 세부 작업을 등록하고 상태(대기/진행중/완료)를 옮기며 관리해요.' },
   { title: '③ 상단 탭 · 더보기 메뉴', body: '"일정 계산기", "달력", "파이프라인 가이드", "리포트·자동화"도 상단 탭에서 바로 열 수 있어요. 자주 안 쓰는 "휴지통"만 "더보기 ▾"에 모아뒀습니다. 오른쪽 하단 "AI 입력"에서는 궁금한 내용을 자연어로 물어볼 수 있어요.' }
 ];
