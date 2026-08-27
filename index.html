@@ -3596,11 +3596,21 @@ function analyzeImageWithAi_(dataUrl) {
       const cleanedReply = stripAiThinking_(data.reply);
       const found = findJsonObject_(cleanedReply);
       const parsed = found ? found.obj : null;
+      // AI 응답에서 JSON을 아예 못 찾았으면(모델이 형식을 안 지켰거나, 비전 모델이 이미지를 제대로 못 받아
+      // 엉뚱한 텍스트만 돌려준 경우 등) 이름/태그/설명이 전부 빈 채로 "분석 성공"처럼 취급하지 않는다.
+      // 예전엔 이 경우에도 그냥 빈 값으로 자료가 등록돼서, 사용자 입장에선 "등록은 되는데 아무것도 안
+      // 채워진다"는 원인을 알 수 없는 문제로 보였다. 지금은 명시적으로 실패 처리해서, 호출하는 쪽(모달/
+      // AI채팅/카드의 "AI 요약 생성" 버튼)에서 공통으로 쓰는 실패 처리 로직이 "분석 실패: ..." 메시지를
+      // 눈에 보이게 띄우도록 한다.
+      if (!parsed) {
+        const preview = cleanedReply ? cleanedReply.slice(0, 80) : '';
+        throw new Error('AI가 정해진 형식(JSON)으로 응답하지 않았습니다' + (preview ? ' — 응답 일부: "' + preview + '"' : ' (빈 응답)'));
+      }
       return {
-        name: (parsed && parsed.name && String(parsed.name).trim()) || '',
-        tags: (parsed && Array.isArray(parsed.tags)) ? parsed.tags.map(t => String(t).trim()).filter(Boolean) : [],
-        summary: (parsed && parsed.summary && String(parsed.summary).trim()) || cleanedReply || (data.reply || '').trim(),
-        description: (parsed && parsed.description && String(parsed.description).trim()) || '',
+        name: (parsed.name && String(parsed.name).trim()) || '',
+        tags: Array.isArray(parsed.tags) ? parsed.tags.map(t => String(t).trim()).filter(Boolean) : [],
+        summary: (parsed.summary && String(parsed.summary).trim()) || cleanedReply || (data.reply || '').trim(),
+        description: (parsed.description && String(parsed.description).trim()) || '',
       };
     });
 }
