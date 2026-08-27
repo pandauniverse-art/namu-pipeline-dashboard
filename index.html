@@ -1219,7 +1219,11 @@ function tierAtLeast_(tier) {
 // 팀원 관리(등급 변경/비활성화)는 대표와 관리자가 동등하게 할 수 있다 — 서로의 등급도 서로 바꿀 수 있음.
 // 사용자(member) 등급은 이 화면에 아예 접근할 수 없다.
 function canManageUsers_() { return tierAtLeast_('manager'); }
-function canEditSensitiveFields_() { return tierAtLeast_('manager'); } // 견적금액 / 실투입비용 / AI 크레딧
+function canEditSensitiveFields_() { return tierAtLeast_('manager'); } // 견적금액 / 실투입비용 / AI 크레딧 — 수정 가능 여부
+// 금액 관련 정보(견적/실투입비용/AI 크레딧)는 수정뿐 아니라 "보는 것" 자체도 대표/관리자만 가능해야 한다는
+// 요청에 따라, 열람 가능 여부도 같은 등급 기준으로 판단한다. 지금은 수정 권한과 동일한 기준이지만, 나중에
+// "보기는 되지만 수정은 안 되는" 등급이 생길 수도 있어 별도 함수로 분리해둔다.
+function canViewSensitiveFields_() { return tierAtLeast_('manager'); }
 function canDeleteProject_() { return tierAtLeast_('manager'); }
 function canManageTrash_() { return tierAtLeast_('manager'); } // 휴지통 비우기 / 영구 삭제
 // 관리자 이상(대표/관리자) 등급인 사람이 활성 상태로 최소 1명은 항상 남아있어야 한다 — 그래야
@@ -1789,13 +1793,18 @@ function populateAssigneeDatalist_() {
   const names = users.filter(u => u.active !== false).map(u => u.name).filter(Boolean);
   el.innerHTML = names.map(n => `<option value="${escapeHtml_(n)}"></option>`).join('');
 }
+const SENSITIVE_FIELD_PLACEHOLDER_ = { 'p-quote': '예: 15000000', 'p-aicredits': '예: 3200', 'p-actualcost': '예: 9000000' };
 function applySensitiveFieldGate_() {
-  const sensitiveOk = canEditSensitiveFields_();
+  // 이 값들은 수정뿐 아니라 열람도 관리자 이상만 가능해야 하므로, 잠그는 것과 별개로
+  // openProjectModal()에서 애초에 실제 값을 입력란에 넣지 않는다(아래 참고). 여기서는
+  // 입력란을 비활성화하고, "잠겨있다"는 사실이 드러나도록 placeholder를 안내 문구로 바꾼다.
+  const sensitiveOk = canViewSensitiveFields_();
   ['p-quote', 'p-aicredits', 'p-actualcost'].forEach(f => {
     const el = document.getElementById(f);
     if (!el) return;
     el.disabled = !sensitiveOk;
-    el.title = sensitiveOk ? '' : '견적/AI 크레딧/실투입비용은 관리자 이상만 수정할 수 있습니다';
+    el.title = sensitiveOk ? '' : '견적/AI 크레딧/실투입비용은 관리자 이상만 보고 수정할 수 있습니다';
+    el.placeholder = sensitiveOk ? SENSITIVE_FIELD_PLACEHOLDER_[f] : '🔒 관리자 전용';
   });
 }
 function openProjectModal(id) {
@@ -1813,14 +1822,22 @@ function openProjectModal(id) {
     document.getElementById('p-director').value = p.director;
     document.getElementById('p-pd').value = p.pd;
     document.getElementById('p-worker').value = p.worker || '';
-    document.getElementById('p-quote').value = p.quoteAmount || '';
-    document.getElementById('p-aicredits').value = p.aiCredits || '';
-    document.getElementById('p-actualcost').value = p.actualCost || '';
+    // 견적/AI 크레딧/실투입비용은 관리자 이상만 볼 수 있어야 하므로, 그 아래 등급이면
+    // 입력란에 실제 값을 아예 넣지 않는다(비활성화만으로는 값이 그대로 노출되기 때문).
+    if (canViewSensitiveFields_()) {
+      document.getElementById('p-quote').value = p.quoteAmount || '';
+      document.getElementById('p-aicredits').value = p.aiCredits || '';
+      document.getElementById('p-actualcost').value = p.actualCost || '';
+    } else {
+      document.getElementById('p-quote').value = '';
+      document.getElementById('p-aicredits').value = '';
+      document.getElementById('p-actualcost').value = '';
+    }
     document.getElementById('p-period-start').value = p.periodStart || '';
     document.getElementById('p-period-end').value = p.periodEnd || '';
     document.getElementById('p-stage').value = p.stageIndex;
     document.getElementById('p-note').value = p.note || '';
-    const hasAdvancedData = !!(p.quoteAmount || p.aiCredits || p.actualCost || p.note || p.periodStart || p.periodEnd || (p.stageIndex && p.stageIndex !== 0));
+    const hasAdvancedData = !!(p.note || p.periodStart || p.periodEnd || (p.stageIndex && p.stageIndex !== 0) || (canViewSensitiveFields_() && (p.quoteAmount || p.aiCredits || p.actualCost)));
     setProjectAdvancedVisible(hasAdvancedData);
     document.getElementById('p-issues-section').style.display = '';
     document.getElementById('p-issue-input').value = '';
@@ -2118,16 +2135,21 @@ function renderOverview() {
   const inProgress = projects.filter(p => p.status !== '수주' && p.status !== '실주').length;
   const soon = projects.filter(p => { const d = daysUntil(p.deadline); return d !== null && d >= 0 && d <= 7; }).length;
   const pendingAI = aiTasks.filter(t => t.status !== '완료').length;
-  const totalQuote = projects.reduce((sum, p) => sum + (p.quoteAmount || 0), 0);
-  const totalCredits = projects.reduce((sum, p) => sum + (p.aiCredits || 0), 0);
-  document.getElementById('statTiles').innerHTML = [
+  const statTiles_ = [
     {label:'전체 프로젝트', value: total},
     {label:'진행중', value: inProgress},
     {label:'마감 7일 이내', value: soon},
     {label:'작업 대기/진행중', value: pendingAI},
-    {label:'전체 견적 합계', value: totalQuote ? formatWon(totalQuote) : '-'},
-    {label:'전체 AI 크레딧 사용', value: totalCredits.toLocaleString('ko-KR')},
-  ].map(s => `<div class="card stat-tile"><div class="label">${s.label}</div><div class="value">${s.value}</div></div>`).join('');
+  ];
+  // 견적/AI 크레딧 합계는 금액 관련 정보라 관리자 이상만 볼 수 있어야 하므로, 그 아래 등급에게는
+  // 타일 자체를 아예 만들지 않는다(집계값도 개별 프로젝트 정보를 유추할 단서가 될 수 있음).
+  if (canViewSensitiveFields_()) {
+    const totalQuote = projects.reduce((sum, p) => sum + (p.quoteAmount || 0), 0);
+    const totalCredits = projects.reduce((sum, p) => sum + (p.aiCredits || 0), 0);
+    statTiles_.push({label:'전체 견적 합계', value: totalQuote ? formatWon(totalQuote) : '-'});
+    statTiles_.push({label:'전체 AI 크레딧 사용', value: totalCredits.toLocaleString('ko-KR')});
+  }
+  document.getElementById('statTiles').innerHTML = statTiles_.map(s => `<div class="card stat-tile"><div class="label">${s.label}</div><div class="value">${s.value}</div></div>`).join('');
   const counts = STAGES.map((s, i) => projects.filter(p => p.stageIndex === i).length);
   const max = Math.max(1, ...counts);
   document.getElementById('stageDistribution').innerHTML = STAGES.map((s, i) => `
@@ -2185,7 +2207,7 @@ function renderBoard() {
       <td>${p.deadline || '-'} ${d !== null ? `<div style="font-size:11px;color:var(--text-muted)">${d<0?`${-d}일 지남`:'D-'+d}</div>`:''}</td>
       <td><span class="pill director">${escapeHtml_(p.director)||'-'}</span><br><span class="pill pd" style="margin-top:4px;display:inline-block;">${escapeHtml_(p.pd)||'-'}</span>${p.worker ? `<br><span class="pill worker" style="margin-top:4px;display:inline-block;">${escapeHtml_(p.worker)}</span>` : ''}</td>
       <td><div class="stage-track">${track}</div><div style="font-size:11px;color:var(--text-muted); margin-top:4px;">${STAGES[p.stageIndex].id} · ${STAGES[p.stageIndex].name}</div></td>
-      <td style="font-size:12px;">${p.quoteAmount ? formatWon(p.quoteAmount) : '<span style="color:var(--text-muted);">견적 미입력</span>'}<div style="font-size:11px;color:var(--text-muted); margin-top:3px;">AI 크레딧 ${p.aiCredits ? p.aiCredits.toLocaleString('ko-KR') : 0} 사용</div></td>
+      <td style="font-size:12px;">${canViewSensitiveFields_() ? (p.quoteAmount ? formatWon(p.quoteAmount) : '<span style="color:var(--text-muted);">견적 미입력</span>') + `<div style="font-size:11px;color:var(--text-muted); margin-top:3px;">AI 크레딧 ${p.aiCredits ? p.aiCredits.toLocaleString('ko-KR') : 0} 사용</div>` : '<span style="color:var(--text-muted);" title="견적/AI 크레딧은 관리자 이상만 볼 수 있습니다">🔒 관리자 전용</span>'}</td>
       <td>
         <div class="row-actions">
           <button onclick="advanceStage('${p.id}',-1)">◀</button>
@@ -2257,6 +2279,10 @@ function renderClientHistory() {
 function renderProfitability() {
   const el = document.getElementById('profitabilityView');
   if (!el) return;
+  if (!canViewSensitiveFields_()) {
+    el.innerHTML = `<div class="empty-state">🔒 견적/실투입비용 정보는 관리자 이상만 볼 수 있습니다.</div>`;
+    return;
+  }
   const rows = projects.filter(p => p.actualCost && p.actualCost > 0);
   if (!rows.length) {
     el.innerHTML = `<div class="empty-state">실제 투입 비용이 입력된 프로젝트가 없습니다.</div>`;
@@ -2342,7 +2368,12 @@ function generateReport() {
   projects.forEach(p => {
     const d = daysUntil(p.deadline);
     const openIssueCount = (p.issues || []).filter(i => i.status !== 'resolved').length;
-    lines.push(`- ${p.name} (${p.client}) | 상태: ${p.status} | 단계: ${STAGES[p.stageIndex].id} ${STAGES[p.stageIndex].name} | 마감: ${p.deadline||'미정'}${d!==null?` (D-${d})`:''}${p.blockedStages.length?` | ⚠ 보류 단계 있음${p.blockReason ? ' (' + p.blockReason + ')' : ''}`:''}${openIssueCount ? ` | ⚠ 열린 이슈 ${openIssueCount}건` : ''} | 견적: ${p.quoteAmount?formatWon(p.quoteAmount):'미입력'}${p.actualCost ? ` | 실투입: ${formatWon(p.actualCost)} | 마진: ${formatWon((p.quoteAmount||0)-p.actualCost)}` : ''} | AI 크레딧: ${(p.aiCredits||0).toLocaleString('ko-KR')}`);
+    // 견적/실투입/마진/AI 크레딧은 금액 관련 정보라 관리자 이상만 볼 수 있어야 하므로,
+    // 그 아래 등급이 리포트를 생성할 때는 이 부분을 통째로 리포트 문구에서 뺀다.
+    const moneyPart = canViewSensitiveFields_()
+      ? ` | 견적: ${p.quoteAmount?formatWon(p.quoteAmount):'미입력'}${p.actualCost ? ` | 실투입: ${formatWon(p.actualCost)} | 마진: ${formatWon((p.quoteAmount||0)-p.actualCost)}` : ''} | AI 크레딧: ${(p.aiCredits||0).toLocaleString('ko-KR')}`
+      : '';
+    lines.push(`- ${p.name} (${p.client}) | 상태: ${p.status} | 단계: ${STAGES[p.stageIndex].id} ${STAGES[p.stageIndex].name} | 마감: ${p.deadline||'미정'}${d!==null?` (D-${d})`:''}${p.blockedStages.length?` | ⚠ 보류 단계 있음${p.blockReason ? ' (' + p.blockReason + ')' : ''}`:''}${openIssueCount ? ` | ⚠ 열린 이슈 ${openIssueCount}건` : ''}${moneyPart}`);
   });
   lines.push('');
   const risk = projects.filter(p => { const d = daysUntil(p.deadline); return (d!==null && d<=7) || p.blockedStages.length || (p.issues||[]).some(i=>i.status!=='resolved'); });
@@ -2771,9 +2802,14 @@ function buildAiProjectsContext_() {
       const stage = stageInfo ? `${stageInfo.id}. ${stageInfo.name}` : '미지정';
       let line = `- ${p.name} | 클라이언트: ${p.client || '-'} | 입찰상태: ${p.status || '-'} | 마감일: ${p.deadline || '미정'} | 담당 디렉터: ${p.director || '-'} / PD: ${p.pd || '-'} / 작업자: ${p.worker || '-'} | 현재 단계: ${stage}`;
       if (p.periodStart && p.periodEnd) line += ` | 진행 기간: ${p.periodStart} ~ ${p.periodEnd}`;
-      if (p.quoteAmount) line += ` | 견적: ${Number(p.quoteAmount).toLocaleString()}원`;
-      line += ` | AI 크레딧 사용량: ${Number(p.aiCredits||0).toLocaleString()}`;
-      if (p.actualCost) line += ` | 실제 투입 비용: ${Number(p.actualCost).toLocaleString()}원 | 마진: ${((p.quoteAmount||0)-p.actualCost).toLocaleString()}원`;
+      // 견적/AI 크레딧/실투입비용은 관리자 이상만 볼 수 있어야 하므로, 그 아래 등급의 채팅
+      // 세션에는 이 값들을 아예 AI 컨텍스트에 넣지 않는다 — 그래야 화면에서는 숨겨놓고
+      // AI 채팅으로 "이 프로젝트 견적 얼마야?"라고 물어서 값을 알아내는 우회를 막을 수 있다.
+      if (canViewSensitiveFields_()) {
+        if (p.quoteAmount) line += ` | 견적: ${Number(p.quoteAmount).toLocaleString()}원`;
+        line += ` | AI 크레딧 사용량: ${Number(p.aiCredits||0).toLocaleString()}`;
+        if (p.actualCost) line += ` | 실제 투입 비용: ${Number(p.actualCost).toLocaleString()}원 | 마진: ${((p.quoteAmount||0)-p.actualCost).toLocaleString()}원`;
+      }
       if (p.blockedStages && p.blockedStages.length) line += ` | ⚠ 보류 단계 있음${p.blockReason ? ' (사유: ' + p.blockReason + ')' : ''}`;
       if (p.note) line += ` | 비고: ${p.note}`;
       const openIssues = (p.issues || []).filter(i => i.status !== 'resolved');
@@ -4510,14 +4546,20 @@ function refreshScheduleResults() {
 }
 // ---------- 내보내기 / 가져오기 ----------
 function exportData() {
-  const blob = new Blob([JSON.stringify({projects, aiTasks, idCounter, scheduleTasks, scheduleIdCounter, assets, activityLog, trash, calendarNotes, users}, null, 2)], {type: 'application/json'});
+  // 화면(보드/수익성/리포트 등)에서는 견적·AI 크레딧·실투입비용을 관리자 이상만 보이도록 가려뒀는데,
+  // JSON 내보내기가 그 값들을 그대로 담아 내보내면 우회로가 생긴다. 그래서 사용자(member) 등급이
+  // 내보낼 때는 프로젝트별로 이 3개 필드를 제외한 사본을 내보낸다(다른 데이터는 그대로).
+  const exportProjects = canViewSensitiveFields_()
+    ? projects
+    : projects.map(p => { const { quoteAmount, aiCredits, actualCost, ...rest } = p; return rest; });
+  const blob = new Blob([JSON.stringify({projects: exportProjects, aiTasks, idCounter, scheduleTasks, scheduleIdCounter, assets, activityLog, trash, calendarNotes, users}, null, 2)], {type: 'application/json'});
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
   a.download = `namu_pipeline_data_${new Date().toISOString().slice(0,10)}.json`;
   a.click();
   URL.revokeObjectURL(url);
-  showToast('JSON 파일로 내보냈습니다');
+  showToast(canViewSensitiveFields_() ? 'JSON 파일로 내보냈습니다' : 'JSON 파일로 내보냈습니다 (견적/AI크레딧/실투입비용은 관리자 이상만 내보낼 수 있어 제외됨)');
 }
 function importData(evt) {
   const file = evt.target.files[0];
