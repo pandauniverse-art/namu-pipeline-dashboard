@@ -231,17 +231,27 @@
   .asset-tag-chip { border: 1px solid var(--border); background: var(--surface-1); color: var(--text-secondary); border-radius: 999px; padding: 5px 12px; font-size: 12px; font-weight: 600; cursor: pointer; }
   .asset-tag-chip:hover { background: var(--surface-2); color: var(--text-primary); }
   .asset-tag-chip.active { background: var(--text-primary); color: var(--surface-1); border-color: var(--text-primary); }
-  .asset-tag-chip-category { font-weight: 700; }
-  .asset-tag-subfilter { margin-top: -10px; padding-left: 4px; }
-  .asset-tag-subfilter .asset-tag-chip { font-weight: 500; font-size: 11.5px; }
-  .tag-picker { display: flex; flex-direction: column; gap: 8px; max-height: 260px; overflow-y: auto; border: 1px solid var(--border); border-radius: 8px; padding: 10px; background: var(--surface-1); }
-  .tag-picker-category { display: flex; flex-direction: column; gap: 4px; }
-  .tag-picker-category-label { font-size: 11px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: .02em; }
+  /* 대표 키워드(카테고리) 칩 — JS에서 각 칩에 --tag-c 변수로 카테고리 고유색을 지정해준다.
+     안 고른 상태에서도 그 색으로 옅게 채워진 "알약"으로 보여서, 아래 하위 키워드 칩과 한눈에 구분된다. */
+  .asset-tag-chip-category { font-weight: 800; border-width: 1.5px; background: color-mix(in srgb, var(--tag-c, var(--series-1)) 16%, var(--surface-1)); color: var(--tag-c, var(--series-1)); border-color: color-mix(in srgb, var(--tag-c, var(--series-1)) 55%, transparent); }
+  .asset-tag-chip-category:hover { background: color-mix(in srgb, var(--tag-c, var(--series-1)) 26%, var(--surface-1)); color: var(--tag-c, var(--series-1)); }
+  .asset-tag-chip-category.active { background: var(--tag-c, var(--series-1)); color: #fff; border-color: var(--tag-c, var(--series-1)); }
+  /* 하위 키워드 칩 — 위에서 고른 대표 키워드와 같은 색을 왼쪽 색띠로만 얇게 둘러, "그 카테고리에 속한
+     하위 항목"이라는 게 보이면서도 카테고리 칩(꽉 찬 알약)보다는 가벼운 인상을 주게 한다. */
+  .asset-tag-subfilter { margin-top: -6px; padding: 8px 10px 2px; border-left: 2px solid var(--grid); }
+  .asset-tag-subfilter .asset-tag-chip { font-weight: 500; font-size: 11.5px; border-left: 3px solid var(--tag-c, var(--series-1)); }
+  .asset-tag-subfilter .asset-tag-chip.active { background: var(--tag-c, var(--series-1)); color: #fff; border-color: var(--tag-c, var(--series-1)); }
+  .tag-picker { display: flex; flex-direction: column; gap: 10px; max-height: 260px; overflow-y: auto; border: 1px solid var(--border); border-radius: 8px; padding: 10px; background: var(--surface-1); }
+  .tag-picker-category { display: flex; flex-direction: column; gap: 4px; padding-left: 8px; border-left: 3px solid var(--tag-c, var(--text-muted)); }
+  .tag-picker-category-label { font-size: 11px; font-weight: 800; color: var(--tag-c, var(--text-muted)); text-transform: uppercase; letter-spacing: .02em; }
   .tag-picker-chips { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+  .tag-picker-chips .asset-tag-chip { border-color: color-mix(in srgb, var(--tag-c, var(--border)) 45%, var(--border)); }
+  .tag-picker-chips .asset-tag-chip.active { background: var(--tag-c, var(--text-primary)); border-color: var(--tag-c, var(--text-primary)); color: #fff; }
   .tag-picker-add-input { border: 1px dashed var(--border); background: transparent; border-radius: 999px; padding: 4px 10px; font-size: 12px; width: 96px; }
   .tag-picker-add-input:focus { width: 140px; }
   .tag-picker-selected { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; min-height: 22px; }
-  .tag-picker-selected-chip { display: inline-flex; align-items: center; gap: 4px; background: var(--text-primary); color: var(--surface-1); border-radius: 999px; padding: 3px 4px 3px 10px; font-size: 12px; font-weight: 600; }
+  .tag-picker-selected-chip { display: inline-flex; align-items: center; gap: 5px; background: var(--text-primary); color: var(--surface-1); border-radius: 999px; padding: 3px 4px 3px 10px; font-size: 12px; font-weight: 600; }
+  .tag-picker-selected-chip::before { content: ''; width: 7px; height: 7px; border-radius: 50%; background: var(--tag-c, var(--surface-1)); flex-shrink: 0; }
   .tag-picker-selected-chip button { background: transparent; border: none; color: inherit; cursor: pointer; font-size: 13px; line-height: 1; padding: 2px 6px; }
   .asset-body { padding: 10px; display: flex; flex-direction: column; gap: 6px; }
   .asset-body input, .asset-body select, .asset-body textarea { font-size: 12px; padding: 5px 7px; font-family: inherit; resize: vertical; }
@@ -336,6 +346,13 @@
   .cal-event-bar.edge-start { border-radius: 6px 0 0 6px; margin-left: 2px; }
   .cal-event-bar.edge-end { border-radius: 0 6px 6px 0; margin-right: 2px; }
   .cal-event-bar.edge-mid { border-radius: 0; }
+  /* 프로젝트/캘린더 일정 색상을 사용자가 직접 고르는 스와치 선택기(프로젝트 모달 · 일정 모달 공용) */
+  .color-swatch-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+  .color-swatch { width: 26px; height: 26px; border-radius: 50%; border: 2px solid transparent; background: var(--sw); cursor: pointer; padding: 0; }
+  .color-swatch:hover { opacity: 0.85; }
+  .color-swatch.active { border-color: var(--text-primary); box-shadow: 0 0 0 2px var(--surface-1) inset; }
+  .color-swatch.auto { width: auto; height: 26px; border-radius: 999px; padding: 0 10px; background: var(--surface-2); color: var(--text-secondary); font-size: 11px; font-weight: 700; border: 1px solid var(--border); }
+  .color-swatch.auto.active { border-color: var(--text-primary); color: var(--text-primary); }
   /* ---------- 모바일 화면 최적화 ---------- */
   @media (max-width: 760px) {
     main { padding: 16px 12px 90px; }
@@ -846,6 +863,11 @@
       <div><label>진행 기간 시작일</label><input id="p-period-start" type="date" onchange="if(document.getElementById('p-period-end').value && document.getElementById('p-period-end').value < this.value) document.getElementById('p-period-end').value = this.value;"></div>
       <div><label>진행 기간 종료일</label><input id="p-period-end" type="date"></div>
       <div class="note-box" style="grid-column:1/-1; margin:0;">진행 기간을 지정하면 캘린더 탭에 마감일과 별개로 촬영/작업 기간이 막대 형태로 표시됩니다(선택 사항).</div>
+      <div style="grid-column:1/-1">
+        <label>달력 색상</label>
+        <input type="hidden" id="p-color">
+        <div class="color-swatch-row" id="p-color-swatches"></div>
+      </div>
       <div style="grid-column:1/-1"><label>현재 단계</label>
         <select id="p-stage"></select>
       </div>
@@ -1038,6 +1060,12 @@
         <select id="ce-project" onchange="calendarEventProjectChanged_()"></select>
       </div>
       <div style="grid-column:1/-1"><label>내용</label><textarea id="ce-text" rows="2" placeholder="예: 클라이언트 미팅, 사내 휴무일, 촬영 기간"></textarea></div>
+      <div style="grid-column:1/-1">
+        <label>달력 색상</label>
+        <input type="hidden" id="ce-color">
+        <div class="color-swatch-row" id="ce-color-swatches"></div>
+        <div class="note-box" style="margin:6px 0 0;" id="ce-color-hint"></div>
+      </div>
     </div>
     <div class="modal-footer" style="justify-content:space-between;">
       <button type="button" id="ce-delete-btn" onclick="deleteCalendarEvent()" style="display:none; color:var(--critical);">삭제</button>
@@ -1990,7 +2018,9 @@ function openProjectModal(id) {
     document.getElementById('p-period-end').value = p.periodEnd || '';
     document.getElementById('p-stage').value = p.stageIndex;
     document.getElementById('p-note').value = p.note || '';
-    const hasAdvancedData = !!(p.note || p.periodStart || p.periodEnd || (p.stageIndex && p.stageIndex !== 0) || (canViewSensitiveFields_() && (p.quoteAmount || p.aiCredits || p.actualCost)));
+    document.getElementById('p-color').value = p.color || '';
+    document.getElementById('p-color-swatches').innerHTML = colorSwatchRowHTML_('p-color', p.color || '');
+    const hasAdvancedData = !!(p.note || p.periodStart || p.periodEnd || p.color || (p.stageIndex && p.stageIndex !== 0) || (canViewSensitiveFields_() && (p.quoteAmount || p.aiCredits || p.actualCost)));
     setProjectAdvancedVisible(hasAdvancedData);
     document.getElementById('p-issues-section').style.display = '';
     document.getElementById('p-issue-input').value = '';
@@ -1998,7 +2028,8 @@ function openProjectModal(id) {
   } else {
     document.getElementById('projectModalTitle').textContent = '프로젝트 추가';
     document.getElementById('projectId').value = '';
-    ['p-name','p-client','p-director','p-pd','p-worker','p-note','p-quote','p-aicredits','p-actualcost','p-period-start','p-period-end'].forEach(f => document.getElementById(f).value = '');
+    ['p-name','p-client','p-director','p-pd','p-worker','p-note','p-quote','p-aicredits','p-actualcost','p-period-start','p-period-end','p-color'].forEach(f => document.getElementById(f).value = '');
+    document.getElementById('p-color-swatches').innerHTML = colorSwatchRowHTML_('p-color', '');
     document.getElementById('p-status').value = '검토중';
     document.getElementById('p-deadline').value = '';
     document.getElementById('p-stage').value = 0;
@@ -2037,6 +2068,7 @@ function saveProject() {
     periodEnd: document.getElementById('p-period-end').value,
     stageIndex: parseInt(document.getElementById('p-stage').value, 10),
     note: document.getElementById('p-note').value.trim(),
+    color: document.getElementById('p-color').value || '',
   };
   if (!data.name) { showToast('프로젝트명을 입력하세요'); return; }
   if (data.periodStart && data.periodEnd && data.periodEnd < data.periodStart) {
@@ -2577,15 +2609,52 @@ function migrateCalendarNoteSchemaV2_(notesList) {
   });
   return changed;
 }
-// 달력의 막대/알약 색상을 프로젝트(또는 일정)별로 다르게 배정한다 — 예전엔 전부 파란색 한 가지였는데,
-// 겹치는 여러 프로젝트/일정을 구분하기 어렵다는 요청에 따라 팔레트에서 순환 배정한다. 같은 id는 항상
-// 같은 색이 나오도록 문자열 해시로 결정하므로(랜덤 아님), 달을 넘겨도 같은 프로젝트는 계속 같은 색으로 보인다.
-const CALENDAR_COLOR_PALETTE_ = ['--series-1', '--series-2', '--series-3', '--series-6', '--series-7', '--series-8', '--series-9'];
-function calendarColorVar_(id) {
+// 어떤 id(프로젝트/카테고리 등)에 대해 항상 같은 색상 CSS 변수를 돌려주는 범용 헬퍼 — 랜덤이 아니라
+// 문자열 해시로 정하므로, 다시 렌더링해도(달을 넘기거나 목록 순서가 바뀌어도) 같은 id는 계속 같은 색으로 보인다.
+// 달력의 프로젝트/일정 막대색, 태그 대표 키워드(카테고리)별 색상 구분 등 여러 곳에서 공통으로 쓴다.
+const HASH_COLOR_PALETTE_ = ['--series-1', '--series-2', '--series-3', '--series-6', '--series-7', '--series-8', '--series-9'];
+function hashColorVar_(id) {
   const s = String(id || '');
   let hash = 0;
   for (let i = 0; i < s.length; i++) { hash = (hash * 31 + s.charCodeAt(i)) >>> 0; }
-  return CALENDAR_COLOR_PALETTE_[hash % CALENDAR_COLOR_PALETTE_.length];
+  return HASH_COLOR_PALETTE_[hash % HASH_COLOR_PALETTE_.length];
+}
+// 달력의 막대/알약 색상을 프로젝트(또는 일정)별로 다르게 배정한다 — 예전엔 전부 파란색 한 가지였는데,
+// 겹치는 여러 프로젝트/일정을 구분하기 어렵다는 요청에 따라 팔레트에서 순환 배정한다.
+function calendarColorVar_(id) { return hashColorVar_(id); }
+// 프로젝트/일정마다 색을 직접 고를 수 있게 해달라는 요청에 따라, 프로젝트 모달·일정 모달의 색상
+// 스와치에서 고른 값(p.color / n.color, "--series-1" 같은 CSS 변수 이름 문자열)이 있으면 그걸 그대로 쓰고,
+// "자동"으로 둔 경우(값이 비어있음)에만 예전처럼 id 해시로 자동 배정한다.
+function projectColorVar_(p) { return (p && p.color) || hashColorVar_(p && p.id); }
+// 캘린더 일정 막대 색 우선순위: ①일정 자체에 직접 지정한 색 → ②연결된 프로젝트의 색(자동/수동 포함)
+// → ③일정 id 해시. 프로젝트에 연결돼 있어도 일정 쪽에서 색을 따로 지정했다면 그 색이 우선한다.
+function noteColorVar_(n, linkedProject) {
+  if (n && n.color) return n.color;
+  if (linkedProject) return projectColorVar_(linkedProject);
+  return hashColorVar_(n && n.id);
+}
+// 색상 스와치 선택기 — "자동" + 팔레트 7색. 클릭 시 hiddenInputId의 값을 갱신하고, 같은 컨테이너를
+// 다시 그려 선택 표시(active 테두리)만 갱신한다(다른 곳의 태그 피커 등과 동일한 재렌더링 방식).
+function colorSwatchRowHTML_(hiddenInputId, currentValue) {
+  const cur = currentValue || '';
+  const autoBtn = `<button type="button" class="color-swatch auto${cur === '' ? ' active' : ''}" title="자동 배정(항목별로 다른 색이 자동으로 붙습니다)" onclick="selectColorSwatch_('${hiddenInputId}','')">자동</button>`;
+  const swatchBtns = HASH_COLOR_PALETTE_.map(v =>
+    `<button type="button" class="color-swatch${cur === v ? ' active' : ''}" style="--sw:var(${v});" title="이 색으로 고정" onclick="selectColorSwatch_('${hiddenInputId}','${v}')"></button>`
+  ).join('');
+  return autoBtn + swatchBtns;
+}
+function selectColorSwatch_(hiddenInputId, value) {
+  const input = document.getElementById(hiddenInputId);
+  if (!input) return;
+  input.value = value;
+  const row = document.getElementById(hiddenInputId + '-swatches');
+  if (row) row.innerHTML = colorSwatchRowHTML_(hiddenInputId, value);
+}
+// 자료 보관함의 "대표 키워드(카테고리)"마다 다른 색을 배정해, 그 밑에 달린 "하위 키워드"와 시각적으로
+// 구분되게 한다. "미분류"는 실제 분류가 아니므로 팔레트 색 대신 무채색(회색)을 고정으로 쓴다.
+function tagCategoryColorVar_(categoryId) {
+  if (categoryId === UNCATEGORIZED_TAG_CATEGORY_ID_) return '--text-muted';
+  return hashColorVar_(categoryId);
 }
 // 이번 달(monthStartKey~monthEndKey)과 겹치는 프로젝트 진행기간 + 캘린더 일정을 하나의 "막대" 목록으로 합치고,
 // 겹치는 막대끼리는 서로 다른 레인(행)에 배정한다(노션/구글캘린더 월간뷰와 같은 방식). 같은 일정이 여러 주에
@@ -2595,7 +2664,7 @@ function calendarBarItems_(monthStartKey, monthEndKey) {
   projects.forEach(p => {
     if (!p.periodStart || !p.periodEnd) return;
     if (p.periodEnd < monthStartKey || p.periodStart > monthEndKey) return;
-    items.push({ start: p.periodStart, end: p.periodEnd, label: p.name, type: 'project', onclick: `openProjectModal('${p.id}')`, colorVar: calendarColorVar_(p.id) });
+    items.push({ start: p.periodStart, end: p.periodEnd, label: p.name, type: 'project', onclick: `openProjectModal('${p.id}')`, colorVar: projectColorVar_(p) });
   });
   calendarNotes.forEach(n => {
     const s = n.startDate || n.date, e = n.endDate || n.date;
@@ -2606,8 +2675,7 @@ function calendarBarItems_(monthStartKey, monthEndKey) {
       start: s, end: e, label: n.text, type: 'note', onclick: `openCalendarEventModal('${n.id}')`,
       tooltip: linkedProject ? `${n.text} (연결: ${linkedProject.name})` : n.text,
       linked: !!linkedProject,
-      // 연결된 프로젝트가 있으면 그 프로젝트와 같은 색으로 맞춰 한눈에 연관성이 보이게 하고, 없으면 일정 자체 id로 색을 정한다.
-      colorVar: calendarColorVar_(linkedProject ? linkedProject.id : n.id),
+      colorVar: noteColorVar_(n, linkedProject),
     });
   });
   // 시작일 빠른 순, 같은 시작일이면 기간이 긴 것부터(레인 배정이 더 안정적으로 보임)
@@ -2682,8 +2750,8 @@ function renderCalendarView() {
         const active = p.status !== '수주' && p.status !== '실주';
         const dleft = daysUntil(p.deadline);
         const risky = active && dleft !== null && dleft <= DEADLINE_ALERT_THRESHOLD;
-        // 마감 임박(risky)일 땐 위험 신호가 우선이므로 빨간색(.risk)을 유지하고, 그 외엔 프로젝트별 색으로 구분한다.
-        const pillStyle = risky ? '' : ` style="background:var(${calendarColorVar_(p.id)});"`;
+        // 마감 임박(risky)일 땐 위험 신호가 우선이므로 빨간색(.risk)을 유지하고, 그 외엔 프로젝트별 색(직접 지정했으면 그 색, 아니면 자동 배정)으로 구분한다.
+        const pillStyle = risky ? '' : ` style="background:var(${projectColorVar_(p)});"`;
         return `<div class="cal-pill${risky ? ' risk' : ''}"${pillStyle} title="${escapeHtml_(p.name)} (${escapeHtml_(p.client)||'-'})" onclick="event.stopPropagation(); openProjectModal('${p.id}')">${escapeHtml_(p.name)}</div>`;
       }).join('');
       const daynum = `<div class="cal-daynum-cell${isToday ? ' today' : ''}" style="grid-column:${idx + 1};">
@@ -2715,6 +2783,8 @@ function openCalendarEventModal(id, prefillDateKey) {
     endEl.value = n.endDate || n.date || '';
     textEl.value = n.text || '';
     projectEl.value = n.project || '';
+    document.getElementById('ce-color').value = n.color || '';
+    document.getElementById('ce-color-swatches').innerHTML = colorSwatchRowHTML_('ce-color', n.color || '');
     deleteBtn.style.display = '';
   } else {
     document.getElementById('calendarEventModalTitle').textContent = '일정 추가';
@@ -2724,8 +2794,12 @@ function openCalendarEventModal(id, prefillDateKey) {
     endEl.value = key;
     textEl.value = '';
     projectEl.value = '';
+    document.getElementById('ce-color').value = '';
+    document.getElementById('ce-color-swatches').innerHTML = colorSwatchRowHTML_('ce-color', '');
     deleteBtn.style.display = 'none';
   }
+  // "자동"으로 두면 연결 프로젝트가 있을 땐 그 프로젝트 색을, 없으면 일정 자체 기준 자동 색을 따른다는 걸 안내
+  document.getElementById('ce-color-hint').textContent = '"자동"으로 두면 연결한 프로젝트와 같은 색을 따라갑니다(연결 안 했으면 일정별로 자동 배정). 직접 고른 색은 항상 우선 적용됩니다.';
   document.getElementById('calendarEventModalBackdrop').classList.add('active');
   setTimeout(() => textEl.focus(), 50);
 }
@@ -2754,15 +2828,16 @@ function saveCalendarEvent() {
   let end = document.getElementById('ce-end').value || start;
   const text = document.getElementById('ce-text').value.trim();
   const project = document.getElementById('ce-project').value;
+  const color = document.getElementById('ce-color').value || '';
   if (!start) { showToast('시작일을 입력하세요'); return; }
   if (!text) { showToast('내용을 입력하세요'); return; }
   if (end < start) { [start, end] = [end, start]; }
   if (id) {
     const n = calendarNotes.find(x => x.id === id);
     if (!n) return;
-    n.startDate = start; n.endDate = end; n.text = text; n.project = project; n.updatedAt = Date.now();
+    n.startDate = start; n.endDate = end; n.text = text; n.project = project; n.color = color; n.updatedAt = Date.now();
   } else {
-    calendarNotes.push({ id: genId_('cnote'), startDate: start, endDate: end, text, project, updatedAt: Date.now() });
+    calendarNotes.push({ id: genId_('cnote'), startDate: start, endDate: end, text, project, color, updatedAt: Date.now() });
   }
   closeCalendarEventModal();
   renderCalendarView();
@@ -4031,20 +4106,24 @@ function renderTagPicker_(ctx) {
     if (!byCategory.has(t.categoryId)) byCategory.set(t.categoryId, []);
     byCategory.get(t.categoryId).push(t.name);
   });
+  // 카테고리 그룹 전체(라벨 + 왼쪽 색띠 + 안의 칩들)를 그 카테고리 고유 색으로 통일해서, 여러 카테고리가
+  // 나열돼 있어도 어디까지가 한 "대표 키워드" 묶음인지 색으로 바로 구분되게 한다.
   pickerEl.innerHTML = categories.map(c => {
     const names = (byCategory.get(c.id) || []).slice().sort((a, b) => a.localeCompare(b, 'ko'));
     const chips = names.map(name => {
       const active = selected.includes(name);
       return `<button type="button" class="asset-tag-chip ${active ? 'active' : ''}" onclick="toggleTagPickerTag_('${ctx}','${jsStrAttr_(name)}','${jsStrAttr_(c.id)}')">${escapeHtml_(name)}</button>`;
     }).join('');
-    return `<div class="tag-picker-category">
+    return `<div class="tag-picker-category" style="--tag-c:var(${tagCategoryColorVar_(c.id)});">
       <div class="tag-picker-category-label">${escapeHtml_(c.label)}</div>
       <div class="tag-picker-chips">${chips}<input type="text" class="tag-picker-add-input" placeholder="+ 새 태그" onkeydown="handleTagPickerAddKeydown_(event,'${ctx}','${jsStrAttr_(c.id)}')"></div>
     </div>`;
   }).join('');
   if (selectedEl) {
+    // 선택된 태그 칩에도 그 태그가 속한 카테고리 색을 작은 점(dot)으로 붙여서, 저장 전에도 어느 대표
+    // 키워드 소속인지 미리 확인할 수 있게 한다.
     selectedEl.innerHTML = selected.length
-      ? selected.map(name => `<span class="tag-picker-selected-chip">${escapeHtml_(name)} <button type="button" onclick="removeTagPickerTag_('${ctx}','${jsStrAttr_(name)}')">×</button></span>`).join('')
+      ? selected.map(name => `<span class="tag-picker-selected-chip" style="--tag-c:var(${tagCategoryColorVar_(categoryOfTag_(name))});">${escapeHtml_(name)} <button type="button" onclick="removeTagPickerTag_('${ctx}','${jsStrAttr_(name)}')">×</button></span>`).join('')
       : '<span style="color:var(--text-muted); font-size:12px;">선택된 태그 없음</span>';
   }
 }
@@ -4618,14 +4697,20 @@ function renderAssetTagFilter_(baseRows) {
 
   const allActive = assetTagCategoryFilter === '' && assetTagFilter === '';
   const allChip = `<button type="button" class="asset-tag-chip ${allActive ? 'active' : ''}" onclick="toggleAssetTagCategoryFilter_('')">전체 (${baseRows.length})</button>`;
+  // 대표 키워드(카테고리) 칩마다 --tag-c로 고유 색을 지정 — 그 색을 기준으로 채워진 알약처럼 보여서
+  // 바로 아래의 하위 키워드 칩(같은 색의 얇은 색띠만 두른 형태)과 구분된다.
   const categoryChips = categoriesInUse.map(c =>
-    `<button type="button" class="asset-tag-chip asset-tag-chip-category ${assetTagCategoryFilter === c.id ? 'active' : ''}" onclick="toggleAssetTagCategoryFilter_('${jsStrAttr_(c.id)}')">${escapeHtml_(c.label)} (${categoryTotal(c.id)})</button>`
+    `<button type="button" class="asset-tag-chip asset-tag-chip-category ${assetTagCategoryFilter === c.id ? 'active' : ''}" style="--tag-c:var(${tagCategoryColorVar_(c.id)});" onclick="toggleAssetTagCategoryFilter_('${jsStrAttr_(c.id)}')">${escapeHtml_(c.label)} (${categoryTotal(c.id)})</button>`
   ).join('');
   el.innerHTML = allChip + categoryChips;
 
   if (!subEl) return;
   if (!assetTagCategoryFilter || !byCategory.has(assetTagCategoryFilter)) { subEl.innerHTML = ''; return; }
   const subtags = byCategory.get(assetTagCategoryFilter).slice().sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], 'ko'));
+  // 하위 키워드 줄 전체를 지금 선택된 대표 키워드의 색으로 통일(왼쪽 색띠 + 칩 색띠)해서, "이게 그 카테고리
+  // 밑에 있다"는 게 한눈에 보이게 한다.
+  const activeCatColor = tagCategoryColorVar_(assetTagCategoryFilter);
+  subEl.style.setProperty('--tag-c', `var(${activeCatColor})`);
   subEl.innerHTML = subtags.map(([tag, count]) =>
     `<button type="button" class="asset-tag-chip ${assetTagFilter === tag ? 'active' : ''}" onclick="toggleAssetTagFilter_('${jsStrAttr_(tag)}')">${escapeHtml_(tag)} (${count})</button>`
   ).join('');
