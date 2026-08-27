@@ -231,6 +231,18 @@
   .asset-tag-chip { border: 1px solid var(--border); background: var(--surface-1); color: var(--text-secondary); border-radius: 999px; padding: 5px 12px; font-size: 12px; font-weight: 600; cursor: pointer; }
   .asset-tag-chip:hover { background: var(--surface-2); color: var(--text-primary); }
   .asset-tag-chip.active { background: var(--text-primary); color: var(--surface-1); border-color: var(--text-primary); }
+  .asset-tag-chip-category { font-weight: 700; }
+  .asset-tag-subfilter { margin-top: -10px; padding-left: 4px; }
+  .asset-tag-subfilter .asset-tag-chip { font-weight: 500; font-size: 11.5px; }
+  .tag-picker { display: flex; flex-direction: column; gap: 8px; max-height: 260px; overflow-y: auto; border: 1px solid var(--border); border-radius: 8px; padding: 10px; background: var(--surface-1); }
+  .tag-picker-category { display: flex; flex-direction: column; gap: 4px; }
+  .tag-picker-category-label { font-size: 11px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: .02em; }
+  .tag-picker-chips { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+  .tag-picker-add-input { border: 1px dashed var(--border); background: transparent; border-radius: 999px; padding: 4px 10px; font-size: 12px; width: 96px; }
+  .tag-picker-add-input:focus { width: 140px; }
+  .tag-picker-selected { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; min-height: 22px; }
+  .tag-picker-selected-chip { display: inline-flex; align-items: center; gap: 4px; background: var(--text-primary); color: var(--surface-1); border-radius: 999px; padding: 3px 4px 3px 10px; font-size: 12px; font-weight: 600; }
+  .tag-picker-selected-chip button { background: transparent; border: none; color: inherit; cursor: pointer; font-size: 13px; line-height: 1; padding: 2px 6px; }
   .asset-body { padding: 10px; display: flex; flex-direction: column; gap: 6px; }
   .asset-body input, .asset-body select, .asset-body textarea { font-size: 12px; padding: 5px 7px; font-family: inherit; resize: vertical; }
   .asset-meta { font-size: 11px; color: var(--text-muted); display: flex; justify-content: space-between; }
@@ -393,6 +405,7 @@
     <div class="tab-more-menu" id="tabMoreMenu">
       <button class="tab-more-item" data-tab="trash">휴지통</button>
       <button class="tab-more-item" data-tab="users" id="tabUsersMenuItem" style="display:none;">팀원 관리</button>
+      <button class="tab-more-item" data-tab="tagmanager">태그 관리</button>
     </div>
   </div>
 </nav>
@@ -727,8 +740,9 @@
         <option value="name">이름순</option>
       </select>
     </div>
-    <!-- 텍스처 사이트들처럼 "전체" + 태그별로 눌러서 걸러볼 수 있는 칩 목록 (인물/배경/캐릭터 등 분야별 정리용) -->
+    <!-- 대표 키워드(카테고리) 칩을 먼저 보여주고, 하나를 고르면 그 밑에 하위 키워드 칩이 펼쳐지는 2단 필터 -->
     <div class="asset-tag-filter" id="assetTagFilter"></div>
+    <div class="asset-tag-filter asset-tag-subfilter" id="assetTagSubFilter"></div>
     <div class="grid" id="assetGrid" style="grid-template-columns: repeat(auto-fill, minmax(220px,1fr));"></div>
     <div class="empty-state" id="assetEmpty" style="display:none">등록된 자료가 없습니다. '+ 자료 추가'로 시작하세요.</div>
     <div class="note-box" id="assetStorageNote" style="margin-top:16px;"></div>
@@ -785,6 +799,25 @@
       <strong>대표 · 관리자</strong>: 전부 가능(견적/실투입비용 등 민감한 값 수정, 프로젝트 삭제, 휴지통 비우기, 팀원 등급 관리까지 서로 동등) · <strong>사용자</strong>: 그 외 일반 편집(작업 상태, 담당자 배정, 메모 등)만 가능, 민감한 값은 읽기 전용.</div>
     <h2 class="section-title">팀원 관리 <span id="usersCount" style="font-weight:400; color:var(--text-muted); font-size:13px;"></span></h2>
     <div class="card" id="usersList"></div>
+  </section>
+  <!-- TAGMANAGER (태그 관리 — 대표 키워드/하위 키워드 정리) -->
+  <section class="tabpanel" id="tab-tagmanager">
+    <div class="note-box" style="margin-top:0;">자료 보관함 태그의 대표 키워드(카테고리)를 추가·이름변경·삭제하고, 하위 키워드(태그)의 소속 카테고리를 바꾸거나 뜻이 같은 태그끼리 합칠 수 있는 화면입니다.</div>
+    <div class="card" style="margin-bottom:16px;">
+      <h2 class="section-title" style="margin-top:0;">대표 키워드</h2>
+      <div class="note-box" style="margin-top:0;">카테고리를 삭제해도 그 안에 있던 태그 자체가 지워지지는 않고, 전부 "미분류"로 이동합니다.</div>
+      <div id="tagCategoryManageList"></div>
+      <div class="filter-row" style="margin-top:10px;">
+        <input type="text" id="newTagCategoryName" placeholder="새 대표 키워드 이름" style="flex:1;" onkeydown="if(event.key==='Enter'){event.preventDefault();addTagCategory_();}">
+        <button class="primary" onclick="addTagCategory_()">+ 추가</button>
+      </div>
+    </div>
+    <div class="card">
+      <h2 class="section-title" style="margin-top:0;">하위 키워드(태그) 목록 <span id="tagManageCount" style="font-weight:400; color:var(--text-muted); font-size:13px;"></span></h2>
+      <input type="text" id="tagManageKeyword" placeholder="태그 검색" oninput="renderTagManageList_()" style="margin-bottom:10px;">
+      <datalist id="tagManageDatalist"></datalist>
+      <div id="tagManageList"></div>
+    </div>
   </section>
 </main>
 <div class="modal-backdrop" id="projectModalBackdrop">
@@ -921,7 +954,11 @@
         <label>프롬프트 내용</label>
         <textarea id="as-prompttext" rows="4" placeholder="사용한 프롬프트 텍스트를 붙여넣으세요"></textarea>
       </div>
-      <div style="grid-column:1/-1"><label>태그 (쉼표로 구분)</label><input id="as-tags" placeholder="예: 파사드, 야간, 블루톤"></div>
+      <div style="grid-column:1/-1">
+        <label>태그 (대표 키워드 안에서 하위 키워드를 고르거나, 없으면 직접 입력해서 추가)</label>
+        <div class="tag-picker-selected" id="as-tags-selected"></div>
+        <div class="tag-picker" id="as-tags-picker"></div>
+      </div>
       <div style="grid-column:1/-1">
         <label>설명 / 메모 (참고용, 자유롭게 적어두는 칸)</label>
         <textarea id="as-description" rows="2" placeholder="예: 클라이언트가 톤앤매너 레퍼런스로 보내준 이미지. 파란 조명 강조."></textarea>
@@ -940,6 +977,18 @@
     <div class="modal-footer">
       <button onclick="closeAssetModal()">취소</button>
       <button class="primary" onclick="saveAssetFromModal()">저장</button>
+    </div>
+  </div>
+</div>
+<!-- 자료 카드의 "태그 편집" 버튼으로 여는 팝업 — 자료 추가 모달과 같은 카테고리 피커를 재사용 -->
+<div class="modal-backdrop" id="assetTagEditModalBackdrop">
+  <div class="modal" style="max-width:560px;">
+    <h2>태그 편집</h2>
+    <div class="tag-picker-selected" id="atm-tags-selected"></div>
+    <div class="tag-picker" id="atm-tags-picker"></div>
+    <div class="modal-footer">
+      <button onclick="closeAssetTagEditModal_()">취소</button>
+      <button class="primary" onclick="saveAssetTagEdit_()">저장</button>
     </div>
   </div>
 </div>
@@ -1102,6 +1151,14 @@ let activityLog = []; // 최근 활동 로그 (상태 변경/보류/AI 자동 �
 let trash = []; // 휴지통: 삭제된 프로젝트/작업/자료의 스냅샷을 30일간 보관 (아래 "휴지통" 섹션 참고)
 let calendarNotes = []; // 달력의 날짜별 자유 메모 (프로젝트 마감일과 별개로, 날짜 칸에 직접 텍스트를 적어두는 용도)
 let users = []; // 팀원 목록: {id, email, name, tier('owner'|'manager'|'member'), active, updatedAt} — 권한/역할 분리 및 담당자 자동완성에 쓰임
+// ---------- 태그 분류 체계 (대표 키워드 / 하위 키워드) ----------
+// tagCategories: 대표 키워드(카테고리) 목록. {id, label, order, updatedAt} — 프로젝트/팀원처럼 Firestore로
+// 동기화되는 데이터라, 코드를 고치지 않고도 화면에서 추가·이름변경·삭제·순서변경이 가능하다.
+let tagCategories = [];
+// tagAssignments: 실제 태그 문자열 하나하나가 어느 카테고리 소속인지 기록. {id, name(태그 문자열), categoryId, updatedAt}
+// 자료(assets)의 tags 배열 자체는 예전처럼 태그 문자열 배열 그대로 유지한다(검색/필터/내보내기 호환성 유지).
+// 여기서는 그 문자열들을 카테고리별로 묶어서 보여주기 위한 "분류 정보"만 별도로 들고 있는 것.
+let tagAssignments = [];
 let idCounter = 1; // 더 이상 ID 생성에 쓰이지 않음(레거시 백업 파일 호환용으로만 유지) — 실제 ID는 genId_()로 생성
 // 새로고침 시 카운터가 1부터 다시 시작되면서 기존 자료와 같은 ID가 생겨 덮어써지는 문제가 있었음.
 // 그래서 ID는 시간값+임의값 조합으로 생성해 충돌 가능성을 사실상 없앤다.
@@ -1174,8 +1231,8 @@ const db = firebase.firestore();
 // 대신 이 방식을 쓴다 — Vercel 프록시가 서버 쪽에서만 GitHub API를 호출하므로 토큰이 브라우저에 노출되지 않는다.
 // 이미지가 수백~수천 장으로 늘어나도 로그인할 때 Firestore에서 받아오는 데이터양은 가벼운 텍스트 수준으로
 // 유지되고, 실제 이미지 픽셀 데이터는 화면에 보일 때만 그 CDN 주소로 브라우저가 지연 로딩한다.)
-const COLLECTIONS = ['projects', 'aiTasks', 'scheduleTasks', 'assets', 'activityLog', 'trash', 'calendarNotes', 'users'];
-const COLLECTION_LABEL_ = { projects: '프로젝트', aiTasks: '작업', scheduleTasks: '일정 계산기 작업', assets: '자료', activityLog: '활동 로그', trash: '휴지통', calendarNotes: '달력 일정', users: '팀원' };
+const COLLECTIONS = ['projects', 'aiTasks', 'scheduleTasks', 'assets', 'activityLog', 'trash', 'calendarNotes', 'users', 'tagCategories', 'tagAssignments'];
+const COLLECTION_LABEL_ = { projects: '프로젝트', aiTasks: '작업', scheduleTasks: '일정 계산기 작업', assets: '자료', activityLog: '활동 로그', trash: '휴지통', calendarNotes: '달력 일정', users: '팀원', tagCategories: '태그 카테고리', tagAssignments: '태그 분류' };
 const CLOUD_FUNCTIONS_READY = false; // 자동 이메일점검 등 일부 기능은 Blaze(카드 등록) 전환 후 활성화됩니다
 const AI_PROXY_URL = 'https://namu-ai-proxy.vercel.app/api/ai-input'; // AI 입력 기능은 Vercel 서버리스 함수를 통해 Groq API와 연결됩니다
 const IMAGE_UPLOAD_PROXY_URL = 'https://namu-ai-proxy.vercel.app/api/upload-image'; // 이미지 자료는 이 Vercel 서버리스 함수를 통해 GitHub 저장소에 커밋된다
@@ -1183,9 +1240,9 @@ let autoSaveTimer = null;
 let autoSaveSuppressed = true; // 초기 로딩 중에는 자동저장을 잠깐 막아서 방금 불러온 데이터를 그대로 되쏘는 것을 방지
 let hasUnsavedChanges_ = false; // 900ms 자동저장 대기/진행 중인 변경사항이 있는지 — 이 사이에 탭을 닫으면 사라질 수 있어 경고에 사용
 let unsavedGeneration_ = 0; // queueAutoSave가 호출될 때마다 증가 — 저장이 진행되는 도중에 새 변경이 또 들어온 경우를 구분하기 위함
-let deletedIds = {projects: [], aiTasks: [], scheduleTasks: [], assets: [], activityLog: [], trash: [], calendarNotes: [], users: []}; // 아직 서버에 삭제 반영 안 된 id들
-let lastFlushedAt = {projects: 0, aiTasks: 0, scheduleTasks: 0, assets: 0, activityLog: 0, trash: 0, calendarNotes: 0, users: 0}; // 컬렉션별로 마지막에 서버에 반영한 시점 (이 이후 updatedAt인 항목만 다시 씀)
-let snapshotsReady = {projects: false, aiTasks: false, scheduleTasks: false, assets: false, activityLog: false, trash: false, calendarNotes: false, users: false};
+let deletedIds = {projects: [], aiTasks: [], scheduleTasks: [], assets: [], activityLog: [], trash: [], calendarNotes: [], users: [], tagCategories: [], tagAssignments: []}; // 아직 서버에 삭제 반영 안 된 id들
+let lastFlushedAt = {projects: 0, aiTasks: 0, scheduleTasks: 0, assets: 0, activityLog: 0, trash: 0, calendarNotes: 0, users: 0, tagCategories: 0, tagAssignments: 0}; // 컬렉션별로 마지막에 서버에 반영한 시점 (이 이후 updatedAt인 항목만 다시 씀)
+let snapshotsReady = {projects: false, aiTasks: false, scheduleTasks: false, assets: false, activityLog: false, trash: false, calendarNotes: false, users: false, tagCategories: false, tagAssignments: false};
 let currentUser = null;
 function isAutoSaveConfigured() {
   return !!currentUser;
@@ -1248,6 +1305,92 @@ function ensureCurrentUserRegistered_() {
   logActivity_(`👤 "${rec.name}"(${email}) 최초 로그인 — ${TIER_LABEL_[tier]} 권한으로 등록됨`);
   queueAutoSave();
 }
+// ---------- 태그 분류 체계 (대표 키워드 / 하위 키워드) ----------
+// 대표 키워드(카테고리)는 코드에 고정하지 않고 tagCategories 컬렉션에 저장해서, 화면에서 자유롭게
+// 추가·이름변경·삭제·순서변경할 수 있게 한다. 아래 DEFAULT_TAG_CATEGORIES_는 tagCategories가 비어있을
+// 때(최초 1회) 만들어주는 시작값일 뿐, 이후엔 그냥 일반 데이터다.
+const DEFAULT_TAG_CATEGORIES_ = [
+  { id: 'cat_person', label: '인물' },
+  { id: 'cat_outfit', label: '의상' },
+  { id: 'cat_shot', label: '촬영/구도' },
+  { id: 'cat_place', label: '배경/장소' },
+  { id: 'cat_style', label: '스타일/톤' },
+  { id: 'cat_usage', label: '자료 용도' },
+  { id: 'cat_prop', label: '소품/사물' },
+];
+// "미분류"는 실제 tagCategories 문서가 아니라 코드에서 고정으로 다루는 가상 카테고리다(삭제 불가,
+// 항상 목록 맨 끝에 표시). 아직 어떤 카테고리에도 배정되지 않은 태그가 여기 담긴다.
+const UNCATEGORIZED_TAG_CATEGORY_ID_ = 'cat_uncat';
+// 이 기능이 생기기 전부터 이미 쓰이던 태그들을 처음 한 번만 자동으로 분류해주기 위한 매핑표.
+// 여기 없는 태그는 전부 "미분류"로 남고, "태그 관리" 화면에서 나중에 직접 분류하면 된다.
+const LEGACY_TAG_CATEGORY_MAP_ = {
+  '중년남성': 'cat_person', '남성': 'cat_person', '남자아이': 'cat_person', '소녀': 'cat_person',
+  '아동': 'cat_person', '한국인': 'cat_person', '종업원': 'cat_person',
+  '갈색재킷': 'cat_outfit', '데님 반바지': 'cat_outfit', '실용적 의상': 'cat_outfit', '아이보리 니트': 'cat_outfit',
+  '청바지': 'cat_outfit', '카고반바지': 'cat_outfit', '카키셔츠': 'cat_outfit', '플리츠스커트': 'cat_outfit',
+  '흰티셔츠': 'cat_outfit', '베스트': 'cat_outfit', '웨이스트백': 'cat_outfit', '안경': 'cat_outfit',
+  '전신': 'cat_shot', '전신샷': 'cat_shot', '얼굴클로즈업': 'cat_shot', '클로즈업': 'cat_shot',
+  '정면': 'cat_shot', '후면': 'cat_shot', '스튜디오 촬영': 'cat_shot', '턴어라운드': 'cat_shot',
+  '스튜디오': 'cat_place', '회색 배경': 'cat_place', '콘크리트': 'cat_place', '식당': 'cat_place',
+  '캐주얼': 'cat_style', '미니멀': 'cat_style', '다크 톤': 'cat_style',
+  '캐릭터': 'cat_usage', '캐릭터 시트': 'cat_usage', '캐릭터디자인': 'cat_usage', '인물레퍼런스': 'cat_usage',
+  '3D레퍼런스': 'cat_usage', '액션물': 'cat_usage', '어린이 패션': 'cat_usage', '키즈패션': 'cat_usage',
+  '물병': 'cat_prop', '택시': 'cat_prop', 'KIA': 'cat_prop',
+};
+// 화면에 보여줄 카테고리 순서 목록: 저장된 카테고리(순서대로) 뒤에 항상 "미분류"를 마지막으로 붙인다.
+function tagCategoryList_() {
+  const sorted = tagCategories.slice().sort((a, b) => (a.order || 0) - (b.order || 0) || (a.updatedAt || 0) - (b.updatedAt || 0));
+  return [...sorted, { id: UNCATEGORIZED_TAG_CATEGORY_ID_, label: '미분류', uncategorized: true }];
+}
+function tagCategoryLabel_(categoryId) {
+  if (categoryId === UNCATEGORIZED_TAG_CATEGORY_ID_ || !categoryId) return '미분류';
+  const c = tagCategories.find(x => x.id === categoryId);
+  return c ? c.label : '미분류';
+}
+// 태그 문자열 하나가 지금 어느 카테고리 소속인지 찾는다. 배정된 적 없으면 "미분류".
+function categoryOfTag_(tagName) {
+  const a = tagAssignments.find(x => x.name === tagName);
+  return (a && a.categoryId) || UNCATEGORIZED_TAG_CATEGORY_ID_;
+}
+// 태그 문자열에 카테고리를 배정한다 — 이미 배정돼 있으면 카테고리만 바꾸고(재분류), 처음 보는 태그면
+// 새로 등록한다. 자료 추가 모달/인라인 편집/AI 이미지 분석 등 "카테고리 안에서 새 태그가 생기는" 모든
+// 경로가 공통으로 이 함수를 거친다 — 그래야 다음부터 그 하위 키워드가 해당 카테고리에 계속 나타난다.
+function assignTagCategory_(tagName, categoryId) {
+  const name = String(tagName || '').trim();
+  if (!name) return;
+  const existing = tagAssignments.find(x => x.name === name);
+  if (existing) {
+    if (categoryId && existing.categoryId !== categoryId) {
+      existing.categoryId = categoryId;
+      existing.updatedAt = Date.now();
+      queueAutoSave();
+    }
+    return;
+  }
+  tagAssignments.push({ id: genId_('tag'), name, categoryId: categoryId || UNCATEGORIZED_TAG_CATEGORY_ID_, updatedAt: Date.now() });
+  queueAutoSave();
+}
+// 최초 1회: 기본 카테고리를 만들고, 이미 자료에 쓰이고 있던 태그들 중 아직 분류 정보가 없는 것들을
+// 매핑표 기준으로 자동 분류한다(매핑표에 없으면 "미분류"). 이후 호출에서는 새로 생긴 태그만 채운다.
+function migrateTagAssignments_() {
+  let changed = false;
+  if (tagCategories.length === 0) {
+    DEFAULT_TAG_CATEGORIES_.forEach((c, i) => {
+      tagCategories.push({ id: c.id, label: c.label, order: i, updatedAt: Date.now() });
+    });
+    changed = true;
+  }
+  const known = new Set(tagAssignments.map(a => a.name));
+  const allTagNames = new Set();
+  assets.forEach(a => (a.tags || []).forEach(t => { if (t) allTagNames.add(t); }));
+  allTagNames.forEach(name => {
+    if (known.has(name)) return;
+    const categoryId = LEGACY_TAG_CATEGORY_MAP_[name] || UNCATEGORIZED_TAG_CATEGORY_ID_;
+    tagAssignments.push({ id: genId_('tag'), name, categoryId, updatedAt: Date.now() });
+    changed = true;
+  });
+  return changed;
+}
 function showSyncStatus(text) {
   const el = document.getElementById('syncStatus');
   if (el) el.textContent = text;
@@ -1258,12 +1401,14 @@ function isAnyModalOpen_() {
 const COLLECTION_VAR = {
   projects: () => projects, aiTasks: () => aiTasks, scheduleTasks: () => scheduleTasks, assets: () => assets,
   activityLog: () => activityLog, trash: () => trash, calendarNotes: () => calendarNotes, users: () => users,
+  tagCategories: () => tagCategories, tagAssignments: () => tagAssignments,
 };
 const COLLECTION_SETTER = {
   projects: (v) => { projects = v; }, aiTasks: (v) => { aiTasks = v; },
   scheduleTasks: (v) => { scheduleTasks = v; }, assets: (v) => { assets = v; },
   activityLog: (v) => { activityLog = v; }, trash: (v) => { trash = v; }, calendarNotes: (v) => { calendarNotes = v; },
   users: (v) => { users = v; },
+  tagCategories: (v) => { tagCategories = v; }, tagAssignments: (v) => { tagAssignments = v; },
 };
 // 각 컬렉션에 실시간 리스너를 붙인다 - 누군가 문서를 추가/수정/삭제하면 즉시(폴링 없이) 반영됨.
 // 모달/사이드패널이 열려있는 동안에는 화면을 다시 그리지 않고 큐에만 쌓아둔다(입력 중 화면이 바뀌는 것 방지).
@@ -1280,11 +1425,12 @@ function attachRealtimeListeners() {
         const stageMigrated = migrateStageIndexForRevisionStage_(projects);
         const trashPurged = purgeExpiredTrash_();
         const calNotesMigrated = migrateCalendarNoteSchemaV2_(calendarNotes);
+        const tagsMigrated = migrateTagAssignments_();
         if (autoSaveSuppressed) autoSaveSuppressed = false; // 아래 ensureCurrentUserRegistered_()의 queueAutoSave가 막히지 않도록 먼저 해제
         ensureCurrentUserRegistered_();
         renderAll();
         showSyncStatus('실시간 동기화됨 · ' + new Date().toLocaleTimeString('ko-KR'));
-        if (stageMigrated || trashPurged || calNotesMigrated) queueAutoSave();
+        if (stageMigrated || trashPurged || calNotesMigrated || tagsMigrated) queueAutoSave();
       }
     }, err => {
       showSyncStatus('동기화 오류: ' + err.message);
@@ -1352,7 +1498,7 @@ function doAutoSave() {
   }
   Promise.all(batches.map(b => b.commit())).then(() => {
     COLLECTIONS.forEach(coll => { lastFlushedAt[coll] = flushedAt; });
-    deletedIds = {projects: [], aiTasks: [], scheduleTasks: [], assets: [], activityLog: [], trash: [], calendarNotes: [], users: []};
+    deletedIds = {projects: [], aiTasks: [], scheduleTasks: [], assets: [], activityLog: [], trash: [], calendarNotes: [], users: [], tagCategories: [], tagAssignments: []};
     // 저장이 진행되는 동안 새 변경이 또 들어왔다면(unsavedGeneration_이 더 증가했다면) 아직 저장 안 된 게
     // 남아있는 것이므로 플래그를 내리지 않는다 — 곧 다시 예약된 doAutoSave가 그 변경까지 마저 저장한다.
     if (unsavedGeneration_ === startGen) hasUnsavedChanges_ = false;
@@ -1723,7 +1869,7 @@ function schedFullEstimate(tasks) {
   return result;
 }
 // ---------- 탭 전환 (기본 탭 + '더보기' 드롭다운의 고급 탭) ----------
-const MORE_TAB_LABELS = { trash: '휴지통', users: '팀원 관리' };
+const MORE_TAB_LABELS = { trash: '휴지통', users: '팀원 관리', tagmanager: '태그 관리' };
 const LAST_TAB_STORAGE_KEY = 'namu_pipeline_last_tab_v1';
 // 새로고침해도 보고 있던 탭이 그대로 유지되도록, 탭을 옮길 때마다 localStorage에 기록해둔다.
 function activateTab(tabName) {
@@ -2629,6 +2775,7 @@ function renderAll() {
   renderTrash();
   renderUsersTab();
   updateUsersTabVisibility_();
+  renderTagManagerTab_();
 }
 // "팀원 관리" 메뉴 항목은 대표에게만 보이게 하고, 등급이 바뀌어 더 이상 대표가 아니게 된 사람이
 // 그 탭에 머물러 있었다면(예: 다른 대표가 등급을 낮춘 경우) 자동으로 기본 탭으로 돌려보낸다.
@@ -2641,6 +2788,128 @@ function updateUsersTabVisibility_() {
   if (!allowed && usersPanel && usersPanel.classList.contains('active')) {
     activateTab('overview');
   }
+}
+// ---------- 태그 관리 (대표 키워드 CRUD + 하위 키워드 재분류/병합) ----------
+function renderTagManagerTab_() {
+  renderTagCategoryManageList_();
+  renderTagManageList_();
+}
+function renderTagCategoryManageList_() {
+  const el = document.getElementById('tagCategoryManageList');
+  if (!el) return;
+  const sorted = tagCategories.slice().sort((a, b) => (a.order || 0) - (b.order || 0) || (a.updatedAt || 0) - (b.updatedAt || 0));
+  el.innerHTML = sorted.length ? sorted.map(c => {
+    const count = tagAssignments.filter(t => t.categoryId === c.id).length;
+    return `<div style="display:flex; align-items:center; gap:8px; padding:6px 0; border-bottom:1px solid var(--grid);">
+      <input type="text" value="${escapeHtml_(c.label)}" onchange="renameTagCategory_('${c.id}', this.value)" style="flex:1; max-width:220px;">
+      <span style="font-size:11px; color:var(--text-muted); white-space:nowrap;">태그 ${count}개</span>
+      <button onclick="deleteTagCategory_('${c.id}')" style="font-size:11px; padding:4px 8px;">삭제</button>
+    </div>`;
+  }).join('') : '<div class="empty-state">등록된 카테고리가 없습니다. 아래에서 추가해보세요.</div>';
+}
+function addTagCategory_() {
+  const input = document.getElementById('newTagCategoryName');
+  const label = input.value.trim();
+  if (!label) return;
+  if (tagCategories.some(c => c.label === label)) { showToast('이미 있는 이름입니다'); return; }
+  const maxOrder = tagCategories.reduce((m, c) => Math.max(m, c.order || 0), -1);
+  tagCategories.push({ id: genId_('cat'), label, order: maxOrder + 1, updatedAt: Date.now() });
+  input.value = '';
+  renderTagManagerTab_();
+  queueAutoSave();
+}
+function renameTagCategory_(id, newLabel) {
+  const c = tagCategories.find(x => x.id === id);
+  if (!c) return;
+  const label = newLabel.trim();
+  if (!label) { renderTagCategoryManageList_(); return; } // 빈 이름으로는 바꾸지 않고 원래 값으로 되돌림
+  c.label = label;
+  c.updatedAt = Date.now();
+  renderTagManagerTab_();
+  queueAutoSave();
+}
+function deleteTagCategory_(id) {
+  const c = tagCategories.find(x => x.id === id);
+  if (!c) return;
+  if (!confirm(`"${c.label}" 카테고리를 삭제할까요? 이 안에 있던 태그는 전부 "미분류"로 이동합니다(태그 자체는 지워지지 않습니다).`)) return;
+  tagAssignments.forEach(t => { if (t.categoryId === id) { t.categoryId = UNCATEGORIZED_TAG_CATEGORY_ID_; t.updatedAt = Date.now(); } });
+  tagCategories = tagCategories.filter(x => x.id !== id);
+  deletedIds.tagCategories.push(id);
+  renderTagManagerTab_();
+  queueAutoSave();
+}
+let tagMergeUiOpenFor_ = null; // "태그 관리"에서 지금 병합 대상 이름을 입력받는 중인 태그(없으면 null)
+function renderTagManageList_() {
+  const el = document.getElementById('tagManageList');
+  const countEl = document.getElementById('tagManageCount');
+  const keywordEl = document.getElementById('tagManageKeyword');
+  if (!el) return;
+  const keyword = (keywordEl ? keywordEl.value : '').toLowerCase();
+  // 자료에 실제로 쓰이고 있는 태그와, tagAssignments에 등록만 되고 지금은 어떤 자료에도 안 붙어있는
+  // 태그(예: 병합/삭제로 남은 흔적 없이) 둘 다 목록에 포함시킨다.
+  const usageCount = new Map();
+  assets.forEach(a => (a.tags || []).forEach(t => { if (!t) return; usageCount.set(t, (usageCount.get(t) || 0) + 1); }));
+  const allNames = new Set([...tagAssignments.map(t => t.name), ...usageCount.keys()]);
+  const datalistEl = document.getElementById('tagManageDatalist');
+  if (datalistEl) datalistEl.innerHTML = Array.from(allNames).sort((a, b) => a.localeCompare(b, 'ko')).map(n => `<option value="${escapeHtml_(n)}">`).join('');
+  let rows = Array.from(allNames).map(name => ({ name, categoryId: categoryOfTag_(name), count: usageCount.get(name) || 0 }));
+  if (keyword) rows = rows.filter(r => r.name.toLowerCase().includes(keyword));
+  rows.sort((a, b) => a.name.localeCompare(b.name, 'ko'));
+  if (countEl) countEl.textContent = `(${rows.length}개)`;
+  if (!rows.length) { el.innerHTML = '<div class="empty-state">태그가 없습니다.</div>'; return; }
+  const categories = tagCategoryList_();
+  const catOptionsFor = (selectedId) => categories.map(c => `<option value="${c.id}" ${c.id === selectedId ? 'selected' : ''}>${escapeHtml_(c.label)}</option>`).join('');
+  el.innerHTML = rows.map(r => `
+    <div style="display:flex; align-items:center; gap:8px; padding:6px 0; border-bottom:1px solid var(--grid); flex-wrap:wrap;">
+      <strong style="min-width:120px;">${escapeHtml_(r.name)}</strong>
+      <span style="font-size:11px; color:var(--text-muted); white-space:nowrap;">${r.count}개 자료</span>
+      <select onchange="reassignTagCategory_('${jsStrAttr_(r.name)}', this.value)" style="min-width:120px;">${catOptionsFor(r.categoryId)}</select>
+      <button onclick="toggleMergeTagUi_('${jsStrAttr_(r.name)}')" style="font-size:11px; padding:4px 8px;">다른 태그로 병합</button>
+    </div>
+    ${tagMergeUiOpenFor_ === r.name ? `
+    <div style="display:flex; gap:6px; padding:2px 0 10px 0; flex-wrap:wrap;">
+      <input type="text" list="tagManageDatalist" id="tagMergeTargetInput" placeholder="합칠 대상 태그 이름(기존 태그)" style="flex:1; min-width:180px; max-width:260px;">
+      <button class="primary" onclick="confirmMergeTagFromUi_('${jsStrAttr_(r.name)}')" style="font-size:11px;">병합 실행</button>
+      <button onclick="toggleMergeTagUi_('')" style="font-size:11px;">취소</button>
+    </div>` : ''}
+  `).join('');
+}
+function reassignTagCategory_(name, categoryId) {
+  assignTagCategory_(name, categoryId);
+  renderTagManagerTab_();
+}
+function toggleMergeTagUi_(name) {
+  tagMergeUiOpenFor_ = (tagMergeUiOpenFor_ === name) ? null : name;
+  renderTagManageList_();
+}
+function confirmMergeTagFromUi_(fromName) {
+  const input = document.getElementById('tagMergeTargetInput');
+  const toName = input ? input.value.trim() : '';
+  if (!toName) { showToast('합칠 대상 태그 이름을 입력하세요'); return; }
+  if (toName === fromName) { showToast('같은 태그로는 합칠 수 없습니다'); return; }
+  tagMergeUiOpenFor_ = null;
+  mergeTag_(fromName, toName);
+}
+// 태그 A를 태그 B로 합친다: A가 붙어있던 모든 자료의 tags 배열에서 A를 B로 바꾸고(중복이면 하나만 남김),
+// A의 분류 정보(tagAssignments)는 지운다. B가 아직 한 번도 분류된 적 없는 완전히 새 태그라면, A가 갖고
+// 있던 카테고리를 그대로 물려받는다.
+function mergeTag_(fromName, toName) {
+  if (!confirm(`"${fromName}" 태그를 "${toName}" 태그로 합칠까요?\n"${fromName}"이 붙어있던 모든 자료가 "${toName}"으로 바뀌고, "${fromName}"은 태그 목록에서 사라집니다. 되돌릴 수 없습니다.`)) return;
+  assets.forEach(a => {
+    if (!a.tags || !a.tags.includes(fromName)) return;
+    a.tags = Array.from(new Set(a.tags.map(t => t === fromName ? toName : t)));
+    a.updatedAt = Date.now();
+  });
+  const fromAssignment = tagAssignments.find(t => t.name === fromName);
+  const toAssignment = tagAssignments.find(t => t.name === toName);
+  if (!toAssignment) assignTagCategory_(toName, fromAssignment ? fromAssignment.categoryId : undefined);
+  if (fromAssignment) {
+    tagAssignments = tagAssignments.filter(t => t.id !== fromAssignment.id);
+    deletedIds.tagAssignments.push(fromAssignment.id);
+  }
+  renderAll();
+  queueAutoSave();
+  showToast(`"${fromName}" → "${toName}"로 태그를 합쳤습니다`);
 }
 // ---------- 파이프라인 가이드 (내부 교육/참고용) ----------
 function renderGuide() {
@@ -3191,6 +3460,7 @@ function applyAiAction_(action) {
       const tags = Array.isArray(action.tags)
         ? action.tags.map(t => String(t).trim()).filter(Boolean)
         : (typeof action.tags === 'string' ? action.tags.split(',').map(t => t.trim()).filter(Boolean) : []);
+      tags.forEach(t => assignTagCategory_(t)); // 카테고리 모르는 새 태그는 일단 "미분류"로 등록
       const description = action.description ? String(action.description).trim() : '';
       const asset = type === 'video'
         ? { id: genId_('a'), type: 'video', name: (action.name && String(action.name).trim()) || String(action.url).trim(), tags, projects: linkedProjects, url: String(action.url).trim(), description, updatedAt: Date.now() }
@@ -3218,6 +3488,7 @@ function applyAiAction_(action) {
         patch.tags = Array.isArray(fields.tags)
           ? fields.tags.map(t => String(t).trim()).filter(Boolean)
           : String(fields.tags).split(',').map(t => t.trim()).filter(Boolean);
+        patch.tags.forEach(t => assignTagCategory_(t)); // 카테고리 모르는 새 태그는 일단 "미분류"로 등록
       }
       if (fields.project) {
         const resolved = resolveProjectMatch_(fields.project);
@@ -3559,7 +3830,6 @@ function analyzePastedImageIntoModalForm_(file) {
   const aiCheckEl = document.getElementById('as-ai-summarize');
   if (!aiCheckEl || !aiCheckEl.checked) return Promise.resolve();
   const nameEl = document.getElementById('as-name');
-  const tagsEl = document.getElementById('as-tags');
   const descEl = document.getElementById('as-description');
   return resizeImageFile_(file)
     .then(({ dataUrl }) => analyzeImageWithAi_(dataUrl))
@@ -3569,19 +3839,55 @@ function analyzePastedImageIntoModalForm_(file) {
       if (!document.getElementById('assetModalBackdrop').classList.contains('active')) return;
       if (document.getElementById('as-type').value !== 'image') return;
       if (!nameEl.value.trim() && result.name) nameEl.value = result.name;
-      if (!tagsEl.value.trim() && result.tags.length) tagsEl.value = result.tags.join(', ');
+      // AI가 골라준 태그는 아직 카테고리를 모르니 일단 "미분류"로 등록해서 선택해둔다(하위 키워드 자체는
+      // 바로 자료에 붙지만, 어느 카테고리인지는 사용자가 나중에 "태그 관리"에서 재분류하면 된다).
+      if (!assetModalSelectedTags_.length && result.tags.length) {
+        result.tags.forEach(name => {
+          assignTagCategory_(name);
+          if (!assetModalSelectedTags_.includes(name)) assetModalSelectedTags_.push(name);
+        });
+        renderTagPicker_('add');
+      }
       if (!descEl.value.trim() && result.description) descEl.value = result.description;
       showToast('✅ AI가 이름·태그·설명을 채웠습니다 — 확인 후 저장하세요');
     })
     .catch(err => showToast('⚠️ 이미지 분석에 실패했습니다: ' + err.message));
 }
+// AI가 준 카테고리 이름(대표 키워드 라벨)을 실제 tagCategories의 id로 바꿔준다. 목록에 없는 이름이거나
+// "미분류"/빈 값이면 미분류로 취급 — AI가 지어낸 카테고리 이름으로 엉뚱한 카테고리가 새로 생기지 않게 한다.
+function resolveCategoryIdByLabel_(label) {
+  const norm = label ? String(label).trim() : '';
+  if (!norm || norm === '미분류') return UNCATEGORIZED_TAG_CATEGORY_ID_;
+  const found = tagCategories.find(c => c.label === norm);
+  return found ? found.id : UNCATEGORIZED_TAG_CATEGORY_ID_;
+}
+// 지금 등록돼있는 대표 키워드/하위 키워드 목록을 AI 프롬프트에 넣어줄 텍스트로 정리한다. 이걸 같이
+// 보내야 AI가 "전신샷"처럼 이미 있는 "전신"과 뜻이 같은 태그를 새로 만들지 않고 기존 걸 재사용한다.
+function buildTagTaxonomyPromptHint_() {
+  const byCategory = new Map();
+  tagAssignments.forEach(t => {
+    if (t.categoryId === UNCATEGORIZED_TAG_CATEGORY_ID_) return; // 미분류는 재사용을 유도할 목록이 아니므로 제외
+    if (!byCategory.has(t.categoryId)) byCategory.set(t.categoryId, []);
+    byCategory.get(t.categoryId).push(t.name);
+  });
+  const lines = tagCategories.slice().sort((a, b) => (a.order || 0) - (b.order || 0)).map(c => {
+    const names = (byCategory.get(c.id) || []).slice(0, 20); // 프롬프트가 너무 길어지지 않게 카테고리당 최대 20개
+    return `- ${c.label}${names.length ? ': ' + names.join(', ') : ' (아직 태그 없음)'}`;
+  });
+  return lines.join('\n');
+}
 // 이미지를 AI(비전 모델)에게 보내서 이름/태그/한줄요약/설명을 한 번에 JSON으로 받아온다.
 // 이미지 업로드(모달)와 AI 채팅 붙여넣기 두 경로에서 공통으로 쓰는 헬퍼.
 // 모델이 JSON 형식을 안 지켜도 최대한 안전하게 폴백하도록(빈 값으로) 처리한다.
 function analyzeImageWithAi_(dataUrl) {
+  const taxonomyHint = buildTagTaxonomyPromptHint_();
   const prompt = '이 이미지를 우리 팀 자료 보관함에 정리해서 등록하려고 해. 다음 JSON 형식으로만, 다른 설명 없이 답해줘:\n' +
-    '{"name": "20자 내외 한국어 이름", "tags": ["태그1", "태그2", "태그3"], "summary": "25자 내외 한국어 한 줄 요약", "description": "40자 내외 한국어 설명(구도·스타일·용도 등 참고 메모)"}\n' +
-    '이미지 속 인물/장소/오브젝트/스타일/분위기가 드러나면 태그에 포함해줘.';
+    '{"name": "20자 내외 한국어 이름", "tags": [{"category": "대표 키워드", "name": "하위 키워드"}], "summary": "25자 내외 한국어 한 줄 요약", "description": "40자 내외 한국어 설명(구도·스타일·용도 등 참고 메모)"}\n' +
+    '태그(tags)의 각 항목은 아래 [현재 대표 키워드/하위 키워드 목록]에 있는 대표 키워드 중 하나를 category로 골라줘. ' +
+    '이미 목록에 있는 하위 키워드와 뜻이 같으면 새로 만들지 말고 그 이름을 그대로 재사용해줘(예: "전신"이 이미 있으면 "전신샷"을 새로 만들지 마). ' +
+    '어느 대표 키워드에도 안 맞을 때만 category를 "미분류"로 해줘. 태그는 3~6개 정도로.\n' +
+    '[현재 대표 키워드/하위 키워드 목록]\n' + (taxonomyHint || '(아직 등록된 카테고리 없음)') + '\n' +
+    '이미지 속 인물/의상/촬영구도/배경장소/스타일톤/자료용도/소품 등이 드러나면 태그에 포함해줘.';
   return fetch(AI_PROXY_URL, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -3606,9 +3912,27 @@ function analyzeImageWithAi_(dataUrl) {
         const preview = cleanedReply ? cleanedReply.slice(0, 80) : '';
         throw new Error('AI가 정해진 형식(JSON)으로 응답하지 않았습니다' + (preview ? ' — 응답 일부: "' + preview + '"' : ' (빈 응답)'));
       }
+      // tags는 이제 {category, name} 객체 배열을 기대하지만, 모델이 형식을 안 지키고 예전처럼 문자열
+      // 배열("태그1", "태그2", ...)로 줄 수도 있어서 두 형태 다 대응한다. 여기서 바로 카테고리를
+      // 등록해두면(assignTagCategory_), 호출하는 쪽은 예전처럼 태그 이름 문자열 배열만 받아도 된다 —
+      // AI채팅/모달 등 기존 코드를 손댈 필요 없이 카테고리 배정까지 자동으로 끝난다.
+      const rawTags = Array.isArray(parsed.tags) ? parsed.tags : [];
+      const tagNames = [];
+      rawTags.forEach(t => {
+        const isObj = t && typeof t === 'object';
+        const name = isObj ? (t.name && String(t.name).trim()) : (t ? String(t).trim() : '');
+        if (!name) return;
+        // 이미 카테고리가 배정된 태그면 AI가 이번에 다른 카테고리를 골랐더라도 기존 분류를 그대로 둔다
+        // (AI 판단이 호출마다 살짝씩 달라질 수 있어서, 이미 정리해둔 카테고리가 매번 흔들리지 않게 함).
+        // 처음 보는 태그일 때만 AI가 고른 카테고리(또는 형식을 안 지켰으면 미분류)로 새로 등록한다.
+        const alreadyAssigned = tagAssignments.some(a => a.name === name);
+        const categoryId = alreadyAssigned ? null : (isObj ? resolveCategoryIdByLabel_(t.category) : null);
+        assignTagCategory_(name, categoryId);
+        tagNames.push(name);
+      });
       return {
         name: (parsed.name && String(parsed.name).trim()) || '',
-        tags: Array.isArray(parsed.tags) ? parsed.tags.map(t => String(t).trim()).filter(Boolean) : [],
+        tags: tagNames,
         summary: (parsed.summary && String(parsed.summary).trim()) || cleanedReply || (data.reply || '').trim(),
         description: (parsed.description && String(parsed.description).trim()) || '',
       };
@@ -3638,6 +3962,7 @@ function registerAiChatImageAsAsset_(file) {
     return analyzeImageWithAi_(dataUrl).then(result => {
       const name = result.name || `붙여넣은 이미지 (${new Date().toLocaleString('ko-KR')})`;
       const tags = result.tags;
+      tags.forEach(t => assignTagCategory_(t)); // 카테고리 모르는 새 태그는 일단 "미분류"로 등록
       const summary = result.summary;
       return uploadAssetImageToStorage_(id, dataUrl).then(url => {
         const asset = {
@@ -3663,20 +3988,103 @@ function registerAiChatImageAsAsset_(file) {
     scrollAiChatToBottom_();
   });
 }
+// ---------- 태그 카테고리 피커 (대표 키워드 안에서 하위 키워드 선택 + 새 태그 직접 추가) ----------
+// '+ 자료 추가' 모달과 카드별 '태그 편집' 팝업 두 곳에서 똑같이 쓰는 컴포넌트라, 어느 화면인지를
+// ctx('add' | 'edit')로 구분해서 각자의 선택 상태 배열/DOM을 가리키게 했다.
+let assetModalSelectedTags_ = [];   // '+ 자료 추가' 모달에서 선택 중인 태그
+let assetTagEditSelectedTags_ = []; // 카드별 '태그 편집' 팝업에서 선택 중인 태그
+let assetTagEditTargetId_ = null;   // '태그 편집' 팝업이 지금 편집 중인 자료 id
+function tagPickerState_(ctx) { return ctx === 'edit' ? assetTagEditSelectedTags_ : assetModalSelectedTags_; }
+function setTagPickerState_(ctx, arr) { if (ctx === 'edit') assetTagEditSelectedTags_ = arr; else assetModalSelectedTags_ = arr; }
+function tagPickerElIds_(ctx) { return ctx === 'edit' ? { picker: 'atm-tags-picker', selected: 'atm-tags-selected' } : { picker: 'as-tags-picker', selected: 'as-tags-selected' }; }
+function renderTagPicker_(ctx) {
+  const ids = tagPickerElIds_(ctx);
+  const pickerEl = document.getElementById(ids.picker);
+  const selectedEl = document.getElementById(ids.selected);
+  if (!pickerEl) return;
+  const selected = tagPickerState_(ctx);
+  const categories = tagCategoryList_();
+  // 지금까지 한 번이라도 카테고리가 배정된 적 있는 태그들을 카테고리별로 묶는다.
+  const byCategory = new Map();
+  tagAssignments.forEach(t => {
+    if (!byCategory.has(t.categoryId)) byCategory.set(t.categoryId, []);
+    byCategory.get(t.categoryId).push(t.name);
+  });
+  pickerEl.innerHTML = categories.map(c => {
+    const names = (byCategory.get(c.id) || []).slice().sort((a, b) => a.localeCompare(b, 'ko'));
+    const chips = names.map(name => {
+      const active = selected.includes(name);
+      return `<button type="button" class="asset-tag-chip ${active ? 'active' : ''}" onclick="toggleTagPickerTag_('${ctx}','${jsStrAttr_(name)}','${jsStrAttr_(c.id)}')">${escapeHtml_(name)}</button>`;
+    }).join('');
+    return `<div class="tag-picker-category">
+      <div class="tag-picker-category-label">${escapeHtml_(c.label)}</div>
+      <div class="tag-picker-chips">${chips}<input type="text" class="tag-picker-add-input" placeholder="+ 새 태그" onkeydown="handleTagPickerAddKeydown_(event,'${ctx}','${jsStrAttr_(c.id)}')"></div>
+    </div>`;
+  }).join('');
+  if (selectedEl) {
+    selectedEl.innerHTML = selected.length
+      ? selected.map(name => `<span class="tag-picker-selected-chip">${escapeHtml_(name)} <button type="button" onclick="removeTagPickerTag_('${ctx}','${jsStrAttr_(name)}')">×</button></span>`).join('')
+      : '<span style="color:var(--text-muted); font-size:12px;">선택된 태그 없음</span>';
+  }
+}
+function toggleTagPickerTag_(ctx, name, categoryId) {
+  const arr = tagPickerState_(ctx);
+  const idx = arr.indexOf(name);
+  if (idx === -1) { arr.push(name); assignTagCategory_(name, categoryId); } else arr.splice(idx, 1);
+  renderTagPicker_(ctx);
+}
+// 카테고리 안의 "+ 새 태그" 입력창에서 Enter — 그 카테고리 소속의 새 하위 키워드로 즉시 등록되고,
+// 지금 편집 중인 자료의 태그로도 바로 선택된다. 다음부터는 이 태그가 그 카테고리 밑에 계속 나타난다.
+function handleTagPickerAddKeydown_(evt, ctx, categoryId) {
+  if (evt.key !== 'Enter') return;
+  evt.preventDefault();
+  const name = evt.target.value.trim();
+  if (!name) return;
+  evt.target.value = '';
+  assignTagCategory_(name, categoryId);
+  const arr = tagPickerState_(ctx);
+  if (!arr.includes(name)) arr.push(name);
+  renderTagPicker_(ctx);
+}
+function removeTagPickerTag_(ctx, name) {
+  setTagPickerState_(ctx, tagPickerState_(ctx).filter(t => t !== name));
+  renderTagPicker_(ctx);
+}
+// 카드의 "태그 편집" 버튼 → 작은 팝업을 열어 현재 태그를 미리 체크해둔 채로 보여준다.
+function openAssetTagEditModal_(assetId) {
+  const a = assets.find(x => x.id === assetId);
+  if (!a) return;
+  assetTagEditTargetId_ = assetId;
+  assetTagEditSelectedTags_ = (a.tags || []).slice();
+  renderTagPicker_('edit');
+  document.getElementById('assetTagEditModalBackdrop').classList.add('active');
+}
+function closeAssetTagEditModal_() {
+  document.getElementById('assetTagEditModalBackdrop').classList.remove('active');
+  assetTagEditTargetId_ = null;
+  applyPendingRemoteIfAny();
+}
+function saveAssetTagEdit_() {
+  if (!assetTagEditTargetId_) return;
+  updateAssetField(assetTagEditTargetId_, 'tags', assetTagEditSelectedTags_.slice());
+  renderAssets();
+  closeAssetTagEditModal_();
+}
 function openAssetModal() {
   pastedImageAnalysisCache_ = null; // 이전에 열었을 때 붙여넣어 분석해둔 결과는 새로 열면 더 이상 유효하지 않음
+  assetModalSelectedTags_ = [];
   document.getElementById('as-type').value = 'image';
   document.getElementById('as-name').value = '';
   document.getElementById('as-imagefile').value = '';
   document.getElementById('as-videourl').value = '';
   document.getElementById('as-prompttext').value = '';
-  document.getElementById('as-tags').value = '';
   document.getElementById('as-description').value = '';
   document.getElementById('as-ai-summarize').checked = true;
   const projSel = document.getElementById('as-projects');
   projSel.innerHTML = projects.map(p => `<option value="${p.id}">${escapeHtml_(p.name)}</option>`).join('');
   const promptSel = document.getElementById('as-linkedprompts');
   promptSel.innerHTML = assets.filter(a => a.type === 'prompt').map(p => `<option value="${p.id}">${escapeHtml_(p.name||'(이름 없음)')}</option>`).join('') || '<option disabled>등록된 프롬프트 없음</option>';
+  renderTagPicker_('add');
   toggleAssetTypeFields();
   document.getElementById('assetModalBackdrop').classList.add('active');
 }
@@ -3691,7 +4099,7 @@ function toggleAssetTypeFields() {
 function saveAssetFromModal() {
   const type = document.getElementById('as-type').value;
   const name = document.getElementById('as-name').value.trim();
-  const tags = document.getElementById('as-tags').value.split(',').map(t => t.trim()).filter(Boolean);
+  const tags = assetModalSelectedTags_.slice();
   const linkedProjects = Array.from(document.getElementById('as-projects').selectedOptions).map(o => o.value);
   const description = document.getElementById('as-description').value.trim();
   const wantAiSummary = !!document.getElementById('as-ai-summarize').checked;
@@ -3759,7 +4167,10 @@ function saveAssetFromModal() {
       const cached = pastedImageAnalysisCache_.result;
       asset.aiSummary = cached.summary;
       if (!asset.name || !asset.name.trim()) asset.name = cached.name || fallbackNames_[asset.id] || '';
-      if (!(asset.tags && asset.tags.length) && cached.tags.length) asset.tags = cached.tags;
+      if (!(asset.tags && asset.tags.length) && cached.tags.length) {
+        cached.tags.forEach(t => assignTagCategory_(t)); // 카테고리 모르는 새 태그는 일단 "미분류"로 등록
+        asset.tags = cached.tags;
+      }
       if (!(asset.description && asset.description.trim()) && cached.description) asset.description = cached.description;
       asset.updatedAt = Date.now();
       renderAssets();
@@ -3794,7 +4205,10 @@ function applyAiImageAnalysis_(asset, fallbackName) {
     if (!assets.includes(asset)) return; // 그 사이 삭제됐으면 무시
     asset.aiSummary = result.summary;
     if (!asset.name || !asset.name.trim()) asset.name = result.name || fallbackName || '';
-    if (!(asset.tags && asset.tags.length) && result.tags.length) asset.tags = result.tags;
+    if (!(asset.tags && asset.tags.length) && result.tags.length) {
+      result.tags.forEach(t => assignTagCategory_(t)); // 카테고리 모르는 새 태그는 일단 "미분류"로 등록
+      asset.tags = result.tags;
+    }
     if (!(asset.description && asset.description.trim()) && result.description) asset.description = result.description;
     asset.updatedAt = Date.now();
     renderAssets();
@@ -3847,7 +4261,10 @@ function applyAiPromptAnalysis_(asset, fallbackName) {
     if (!assets.includes(asset)) return; // 그 사이 삭제됐으면 무시
     asset.aiSummary = result.summary;
     if (!asset.name || !asset.name.trim()) asset.name = result.name || fallbackName || '';
-    if (!(asset.tags && asset.tags.length) && result.tags.length) asset.tags = result.tags;
+    if (!(asset.tags && asset.tags.length) && result.tags.length) {
+      result.tags.forEach(t => assignTagCategory_(t)); // 카테고리 모르는 새 태그는 일단 "미분류"로 등록
+      asset.tags = result.tags;
+    }
     if (!(asset.description && asset.description.trim()) && result.description) asset.description = result.description;
     asset.updatedAt = Date.now();
     renderAssets();
@@ -3917,7 +4334,9 @@ function updateAssetField(id, field, value) {
   const a = assets.find(x => x.id === id);
   if (!a) return;
   if (field === 'tags') {
-    a.tags = value.split(',').map(t => t.trim()).filter(Boolean);
+    // 카드의 "태그 편집" 팝업(카테고리 피커)에서는 이미 배열로 넘어오고, 혹시 예전 방식대로 콤마
+    // 문자열이 넘어오는 경우까지 함께 지원한다(하위 호환).
+    a.tags = Array.isArray(value) ? value.slice() : value.split(',').map(t => t.trim()).filter(Boolean);
   } else if (field === 'projects') {
     a.projects = value; // 이미 배열로 전달됨 (다중 선택)
   } else {
@@ -4135,33 +4554,60 @@ try {
 function activateAssetSubTab(type) {
   assetSubTab = type;
   assetTagFilter = ''; // 서브탭이 바뀌면 태그 구성 자체가 달라지므로(이미지 태그 ≠ 프롬프트 태그) 선택 초기화
+  assetTagCategoryFilter = '';
   try { localStorage.setItem(ASSET_SUBTAB_STORAGE_KEY, type); } catch (e) {}
   renderAssets();
 }
-// 텍스처 사이트들처럼 "전체" + 태그별로 눌러서 걸러볼 수 있게(인물/배경/캐릭터 등 분야별 정리) 태그 칩을 보여준다.
-// 현재 서브탭(이미지/영상/프롬프트)·프로젝트 필터에 걸리는 자료들에서 실제로 쓰이는 태그만 모아서, 많이
-// 쓰인 태그부터 보여준다. 태그 자체를 고르는 UI라 검색어/현재 선택된 태그로는 다시 좁히지 않는다
-// (그러면 태그를 하나 고른 순간 다른 태그 칩들이 화면에서 사라져서 옮겨다니며 비교해볼 수 없기 때문).
-let assetTagFilter = ''; // 빈 문자열 = "전체"
+// 대표 키워드(카테고리) 칩을 먼저 보여주고, 하나를 고르면 그 밑에 하위 키워드 칩이 펼쳐지는 2단 필터.
+// 예전에는 태그 43개가 한 줄에 전부 나열돼서 찾기 어려웠는데, 카테고리로 한 번 걸러서 보게 한다.
+// 현재 서브탭(이미지/영상/프롬프트)·프로젝트 필터에 걸리는 자료들에서 실제로 쓰이는 태그만 모아서 보여준다.
+// 태그 자체를 고르는 UI라 검색어/현재 선택된 태그로는 다시 좁히지 않는다(그러면 태그를 하나 고른 순간
+// 다른 태그 칩들이 화면에서 사라져서 옮겨다니며 비교해볼 수 없기 때문).
+let assetTagFilter = ''; // 선택된 하위 키워드(태그 문자열). 빈 문자열 = 선택 안 함
+let assetTagCategoryFilter = ''; // 지금 펼쳐서 보고 있는 카테고리. 빈 문자열 = 카테고리 칩만 표시(=전체)
+function toggleAssetTagCategoryFilter_(categoryId) {
+  assetTagCategoryFilter = (assetTagCategoryFilter === categoryId) ? '' : categoryId;
+  assetTagFilter = ''; // 카테고리를 바꾸면 그 안에서 고르고 있던 하위 키워드 선택은 초기화
+  renderAssets();
+}
 function toggleAssetTagFilter_(tag) {
   assetTagFilter = (assetTagFilter === tag) ? '' : tag;
   renderAssets();
 }
 function renderAssetTagFilter_(baseRows) {
   const el = document.getElementById('assetTagFilter');
+  const subEl = document.getElementById('assetTagSubFilter');
   if (!el) return;
-  const counts = new Map();
+  const tagCounts = new Map();
   baseRows.forEach(a => (a.tags || []).forEach(t => {
     if (!t) return;
-    counts.set(t, (counts.get(t) || 0) + 1);
+    tagCounts.set(t, (tagCounts.get(t) || 0) + 1);
   }));
-  if (!counts.size) { el.innerHTML = ''; return; }
-  const tags = Array.from(counts.entries()).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], 'ko'));
-  const allChip = `<button type="button" class="asset-tag-chip ${assetTagFilter === '' ? 'active' : ''}" onclick="toggleAssetTagFilter_('')">전체 (${baseRows.length})</button>`;
-  const tagChips = tags.map(([tag, count]) =>
+  if (!tagCounts.size) { el.innerHTML = ''; if (subEl) subEl.innerHTML = ''; return; }
+  // 태그를 카테고리별로 묶는다 — 분류 정보가 없는 태그는 "미분류"로 들어간다.
+  const byCategory = new Map(); // categoryId -> [[tag, count], ...]
+  tagCounts.forEach((count, tag) => {
+    const catId = categoryOfTag_(tag);
+    if (!byCategory.has(catId)) byCategory.set(catId, []);
+    byCategory.get(catId).push([tag, count]);
+  });
+  const categoryTotal = (catId) => (byCategory.get(catId) || []).reduce((sum, [, c]) => sum + c, 0);
+  // 실제로 쓰인 태그가 하나라도 있는 카테고리만 칩으로 보여준다(빈 카테고리로 줄이 늘어나지 않게).
+  const categoriesInUse = tagCategoryList_().filter(c => byCategory.has(c.id));
+
+  const allActive = assetTagCategoryFilter === '' && assetTagFilter === '';
+  const allChip = `<button type="button" class="asset-tag-chip ${allActive ? 'active' : ''}" onclick="toggleAssetTagCategoryFilter_('')">전체 (${baseRows.length})</button>`;
+  const categoryChips = categoriesInUse.map(c =>
+    `<button type="button" class="asset-tag-chip asset-tag-chip-category ${assetTagCategoryFilter === c.id ? 'active' : ''}" onclick="toggleAssetTagCategoryFilter_('${jsStrAttr_(c.id)}')">${escapeHtml_(c.label)} (${categoryTotal(c.id)})</button>`
+  ).join('');
+  el.innerHTML = allChip + categoryChips;
+
+  if (!subEl) return;
+  if (!assetTagCategoryFilter || !byCategory.has(assetTagCategoryFilter)) { subEl.innerHTML = ''; return; }
+  const subtags = byCategory.get(assetTagCategoryFilter).slice().sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], 'ko'));
+  subEl.innerHTML = subtags.map(([tag, count]) =>
     `<button type="button" class="asset-tag-chip ${assetTagFilter === tag ? 'active' : ''}" onclick="toggleAssetTagFilter_('${jsStrAttr_(tag)}')">${escapeHtml_(tag)} (${count})</button>`
   ).join('');
-  el.innerHTML = allChip + tagChips;
 }
 // AI 요약은 기본 2줄만 보이게 자르고, "더보기"를 눌렀을 때만 전체를 펼쳐서 보여준다.
 // 텍스트 영역(textarea)이라 요약 내용을 직접 고쳐서 저장할 수도 있다 — 다른 입력 필드처럼 값이 바뀌면(onchange) 바로 저장됨.
@@ -4251,7 +4697,10 @@ function renderAssets() {
   });
   renderAssetTagFilter_(tagChipBaseRows);
   const rows = tagChipBaseRows.filter(a => {
+    // 하위 키워드까지 골랐으면 그 태그로, 카테고리만 고른 상태면 "그 카테고리에 속한 태그가 하나라도
+    // 있는 자료"로 걸러준다(예: "의상" 카테고리만 클릭해도 의상 관련 태그가 붙은 자료가 전부 보임).
     if (assetTagFilter && !(a.tags || []).includes(assetTagFilter)) return false;
+    if (!assetTagFilter && assetTagCategoryFilter && !(a.tags || []).some(t => categoryOfTag_(t) === assetTagCategoryFilter)) return false;
     if (keyword) {
       const hay = (a.name + ' ' + (a.tags || []).join(' ') + ' ' + (a.text || '') + ' ' + (a.url || '') + ' ' + (a.aiSummary || '') + ' ' + (a.description || '')).toLowerCase();
       if (hay.indexOf(keyword) === -1) return false;
@@ -4281,7 +4730,10 @@ function renderAssets() {
         <span class="pill ${a.type==='image'?'ai':a.type==='video'?'pd':'director'}" style="align-self:flex-start;">${typeLabel[a.type]||a.type}</span>
         ${a.aiSummary ? renderAiSummaryBlock_(a) : `<button onclick="generateAssetAiSummary_(assets.find(x=>x.id==='${a.id}'))" style="font-size:11px; padding:4px 8px; align-self:flex-start;">${a.type==='image' ? '🤖 AI로 이름·태그·요약 자동 정리' : '🤖 AI 요약 생성' + (a.type==='video' && !youtubeVideoId_(a.url) ? ' (설명/메모 기반)' : '')}</button>`}
         <input data-field="name" value="${escapeHtml_(a.name)}" placeholder="이름" onchange="updateAssetField('${a.id}','name',this.value)">
-        <input data-field="tags" value="${escapeHtml_((a.tags||[]).join(', '))}" placeholder="태그 (쉼표로 구분)" onchange="updateAssetField('${a.id}','tags',this.value)">
+        <div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap; font-size:11px; color:var(--text-secondary);">
+          <span>태그: ${(a.tags||[]).length ? (a.tags||[]).map(t => escapeHtml_(t)).join(', ') : '없음'}</span>
+          <button onclick="openAssetTagEditModal_('${a.id}')" style="padding:2px 8px; font-size:11px;">태그 편집</button>
+        </div>
         <textarea data-field="description" rows="2" placeholder="설명/메모 (참고용)" onchange="updateAssetField('${a.id}','description',this.value)">${escapeHtml_(a.description)}</textarea>
         <div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap; font-size:11px; color:var(--text-secondary);">
           <span>연결 프로젝트: ${(a.projects||[]).length ? (a.projects||[]).map(pid => escapeHtml_((projects.find(p=>p.id===pid)||{}).name)).filter(Boolean).join(', ') : '없음(전체 공용)'}</span>
@@ -4562,7 +5014,7 @@ function exportData() {
   const exportProjects = canViewSensitiveFields_()
     ? projects
     : projects.map(p => { const { quoteAmount, aiCredits, actualCost, ...rest } = p; return rest; });
-  const blob = new Blob([JSON.stringify({projects: exportProjects, aiTasks, idCounter, scheduleTasks, scheduleIdCounter, assets, activityLog, trash, calendarNotes, users}, null, 2)], {type: 'application/json'});
+  const blob = new Blob([JSON.stringify({projects: exportProjects, aiTasks, idCounter, scheduleTasks, scheduleIdCounter, assets, activityLog, trash, calendarNotes, users, tagCategories, tagAssignments}, null, 2)], {type: 'application/json'});
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
