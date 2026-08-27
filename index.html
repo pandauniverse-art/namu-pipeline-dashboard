@@ -302,6 +302,10 @@
   .cal-cell.today .cal-date { color: var(--text-primary); font-weight: 700; }
   .cal-pill { font-size: 10.5px; padding: 2px 6px; border-radius: 6px; background: var(--series-1); color: #fff; cursor: pointer; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .cal-pill.risk { background: var(--critical); }
+  .cal-note { flex: 1; min-height: 20px; resize: none; border: 1px solid transparent; background: transparent; color: var(--text-secondary); font-size: 10.5px; font-family: inherit; padding: 2px 3px; border-radius: 4px; line-height: 1.35; }
+  .cal-note:hover { border-color: var(--grid); }
+  .cal-note:focus { border-color: var(--text-primary); background: var(--surface-1); color: var(--text-primary); outline: none; }
+  .cal-note::placeholder { color: var(--text-muted); }
   /* ---------- 모바일 화면 최적화 ---------- */
   @media (max-width: 760px) {
     main { padding: 16px 12px 90px; }
@@ -1041,6 +1045,7 @@ let aiTasks = [];
 let assets = []; // 자료 보관함: 레퍼런스/AI 학습용 이미지 등
 let activityLog = []; // 최근 활동 로그 (상태 변경/보류/AI 자동 반영 등 기록, 최대 ACTIVITY_LOG_MAX건만 보관)
 let trash = []; // 휴지통: 삭제된 프로젝트/작업/자료의 스냅샷을 30일간 보관 (아래 "휴지통" 섹션 참고)
+let calendarNotes = []; // 달력의 날짜별 자유 메모 (프로젝트 마감일과 별개로, 날짜 칸에 직접 텍스트를 적어두는 용도)
 let idCounter = 1; // 더 이상 ID 생성에 쓰이지 않음(레거시 백업 파일 호환용으로만 유지) — 실제 ID는 genId_()로 생성
 // 새로고침 시 카운터가 1부터 다시 시작되면서 기존 자료와 같은 ID가 생겨 덮어써지는 문제가 있었음.
 // 그래서 ID는 시간값+임의값 조합으로 생성해 충돌 가능성을 사실상 없앤다.
@@ -1086,15 +1091,15 @@ const db = firebase.firestore();
 // 대신 이 방식을 쓴다 — Vercel 프록시가 서버 쪽에서만 GitHub API를 호출하므로 토큰이 브라우저에 노출되지 않는다.
 // 이미지가 수백~수천 장으로 늘어나도 로그인할 때 Firestore에서 받아오는 데이터양은 가벼운 텍스트 수준으로
 // 유지되고, 실제 이미지 픽셀 데이터는 화면에 보일 때만 그 CDN 주소로 브라우저가 지연 로딩한다.)
-const COLLECTIONS = ['projects', 'aiTasks', 'scheduleTasks', 'assets', 'activityLog', 'trash'];
+const COLLECTIONS = ['projects', 'aiTasks', 'scheduleTasks', 'assets', 'activityLog', 'trash', 'calendarNotes'];
 const CLOUD_FUNCTIONS_READY = false; // 자동 이메일점검 등 일부 기능은 Blaze(카드 등록) 전환 후 활성화됩니다
 const AI_PROXY_URL = 'https://namu-ai-proxy.vercel.app/api/ai-input'; // AI 입력 기능은 Vercel 서버리스 함수를 통해 Groq API와 연결됩니다
 const IMAGE_UPLOAD_PROXY_URL = 'https://namu-ai-proxy.vercel.app/api/upload-image'; // 이미지 자료는 이 Vercel 서버리스 함수를 통해 GitHub 저장소에 커밋된다
 let autoSaveTimer = null;
 let autoSaveSuppressed = true; // 초기 로딩 중에는 자동저장을 잠깐 막아서 방금 불러온 데이터를 그대로 되쏘는 것을 방지
-let deletedIds = {projects: [], aiTasks: [], scheduleTasks: [], assets: [], activityLog: [], trash: []}; // 아직 서버에 삭제 반영 안 된 id들
-let lastFlushedAt = {projects: 0, aiTasks: 0, scheduleTasks: 0, assets: 0, activityLog: 0, trash: 0}; // 컬렉션별로 마지막에 서버에 반영한 시점 (이 이후 updatedAt인 항목만 다시 씀)
-let snapshotsReady = {projects: false, aiTasks: false, scheduleTasks: false, assets: false, activityLog: false, trash: false};
+let deletedIds = {projects: [], aiTasks: [], scheduleTasks: [], assets: [], activityLog: [], trash: [], calendarNotes: []}; // 아직 서버에 삭제 반영 안 된 id들
+let lastFlushedAt = {projects: 0, aiTasks: 0, scheduleTasks: 0, assets: 0, activityLog: 0, trash: 0, calendarNotes: 0}; // 컬렉션별로 마지막에 서버에 반영한 시점 (이 이후 updatedAt인 항목만 다시 씀)
+let snapshotsReady = {projects: false, aiTasks: false, scheduleTasks: false, assets: false, activityLog: false, trash: false, calendarNotes: false};
 let currentUser = null;
 function isAutoSaveConfigured() {
   return !!currentUser;
@@ -1108,12 +1113,12 @@ function isAnyModalOpen_() {
 }
 const COLLECTION_VAR = {
   projects: () => projects, aiTasks: () => aiTasks, scheduleTasks: () => scheduleTasks, assets: () => assets,
-  activityLog: () => activityLog, trash: () => trash,
+  activityLog: () => activityLog, trash: () => trash, calendarNotes: () => calendarNotes,
 };
 const COLLECTION_SETTER = {
   projects: (v) => { projects = v; }, aiTasks: (v) => { aiTasks = v; },
   scheduleTasks: (v) => { scheduleTasks = v; }, assets: (v) => { assets = v; },
-  activityLog: (v) => { activityLog = v; }, trash: (v) => { trash = v; },
+  activityLog: (v) => { activityLog = v; }, trash: (v) => { trash = v; }, calendarNotes: (v) => { calendarNotes = v; },
 };
 // 각 컬렉션에 실시간 리스너를 붙인다 - 누군가 문서를 추가/수정/삭제하면 즉시(폴링 없이) 반영됨.
 // 모달/사이드패널이 열려있는 동안에는 화면을 다시 그리지 않고 큐에만 쌓아둔다(입력 중 화면이 바뀌는 것 방지).
@@ -1174,7 +1179,7 @@ function doAutoSave() {
   if (opCount === 0) { showSyncStatus('자동 저장됨 · ' + new Date().toLocaleTimeString('ko-KR')); return; }
   batch.commit().then(() => {
     COLLECTIONS.forEach(coll => { lastFlushedAt[coll] = flushedAt; });
-    deletedIds = {projects: [], aiTasks: [], scheduleTasks: [], assets: [], activityLog: [], trash: []};
+    deletedIds = {projects: [], aiTasks: [], scheduleTasks: [], assets: [], activityLog: [], trash: [], calendarNotes: []};
     showSyncStatus('자동 저장됨 · ' + new Date().toLocaleTimeString('ko-KR'));
   }).catch(err => {
     showSyncStatus('저장 실패: ' + err.message);
@@ -2083,6 +2088,50 @@ function calendarGoToday() {
 function calendarDateKey_(y, m, d) {
   return `${y}-${String(m + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
 }
+// 달력 날짜 칸에 프로젝트 마감일과 별개로 자유 텍스트 메모를 남길 수 있다(예: "휴무", "OO 미팅", "촬영 예정").
+// 날짜당 메모 하나(진짜 여러 건이 필요하면 줄바꿈으로 이어 적으면 됨) — 굳이 목록 UI를 따로 만들지 않고
+// 칸 안 textarea 하나로 단순하게 유지했다.
+function findCalendarNote_(dateKey) {
+  return calendarNotes.find(n => n.date === dateKey);
+}
+function updateCalendarNote_(dateKey, text) {
+  const trimmed = (text || '').trim();
+  const existing = findCalendarNote_(dateKey);
+  if (!trimmed) {
+    if (existing) {
+      calendarNotes = calendarNotes.filter(n => n.id !== existing.id);
+      deletedIds.calendarNotes.push(existing.id);
+    }
+  } else if (existing) {
+    if (existing.text === trimmed) return; // 실제로 바뀐 게 없으면 저장/재렌더링 생략
+    existing.text = trimmed;
+    existing.updatedAt = Date.now();
+  } else {
+    calendarNotes.push({ id: genId_('cnote'), date: dateKey, text: trimmed, updatedAt: Date.now() });
+  }
+  renderCalendarView();
+  queueAutoSave();
+}
+// renderAssets()의 자료 카드와 같은 문제: 달력을 다시 그릴 때(다른 날짜 메모 저장, 실시간 동기화 등으로
+// renderCalendarView()가 호출되면) 마침 메모를 타이핑 중이던 textarea까지 통째로 새로 만들어지면서
+// 포커스와 커밋 전 입력값이 날아갈 수 있다. 다시 그리기 직전/직후에 포커스를 기억했다가 복원한다.
+function captureCalendarNoteFocus_(grid) {
+  const el = document.activeElement;
+  if (!el || !grid || !grid.contains(el) || !el.classList.contains('cal-note')) return null;
+  let selStart = null, selEnd = null;
+  try { selStart = el.selectionStart; selEnd = el.selectionEnd; } catch (e) {}
+  return { date: el.dataset.date, value: el.value, selStart, selEnd };
+}
+function restoreCalendarNoteFocus_(grid, captured) {
+  if (!captured || !grid) return;
+  const el = grid.querySelector(`.cal-note[data-date="${captured.date}"]`);
+  if (!el) return;
+  el.value = captured.value;
+  el.focus();
+  if (captured.selStart !== null && captured.selEnd !== null) {
+    try { el.setSelectionRange(captured.selStart, captured.selEnd); } catch (e) {}
+  }
+}
 function renderCalendarView() {
   const grid = document.getElementById('calendarGrid');
   const label = document.getElementById('calendarMonthLabel');
@@ -2102,10 +2151,12 @@ function renderCalendarView() {
   const dowNames = ['일', '월', '화', '수', '목', '금', '토'];
   let html = dowNames.map(d => `<div class="cal-dow">${d}</div>`).join('');
   for (let i = 0; i < firstDow; i++) html += `<div class="cal-cell empty"></div>`;
+  const activeEdit_ = captureCalendarNoteFocus_(grid);
   for (let d = 1; d <= daysInMonth; d++) {
     const key = calendarDateKey_(year, month, d);
     const dayProjects = byDate[key] || [];
     const isToday = key === todayKey;
+    const note = findCalendarNote_(key);
     html += `<div class="cal-cell${isToday ? ' today' : ''}">
       <div class="cal-date">${d}</div>
       ${dayProjects.map(p => {
@@ -2114,10 +2165,12 @@ function renderCalendarView() {
         const risky = active && d !== null && d <= DEADLINE_ALERT_THRESHOLD;
         return `<div class="cal-pill${risky ? ' risk' : ''}" title="${p.name} (${p.client||'-'})" onclick="openProjectModal('${p.id}')">${p.name}</div>`;
       }).join('')}
+      <textarea class="cal-note" data-date="${key}" rows="1" placeholder="+ 메모" onchange="updateCalendarNote_('${key}', this.value)">${note ? note.text.replace(/</g,'&lt;') : ''}</textarea>
     </div>`;
   }
   grid.className = 'cal-grid';
   grid.innerHTML = html;
+  restoreCalendarNoteFocus_(grid, activeEdit_);
 }
 function renderAll() {
   renderOverview();
@@ -4017,7 +4070,7 @@ function refreshScheduleResults() {
 }
 // ---------- 내보내기 / 가져오기 ----------
 function exportData() {
-  const blob = new Blob([JSON.stringify({projects, aiTasks, idCounter, scheduleTasks, scheduleIdCounter, assets, activityLog, trash}, null, 2)], {type: 'application/json'});
+  const blob = new Blob([JSON.stringify({projects, aiTasks, idCounter, scheduleTasks, scheduleIdCounter, assets, activityLog, trash, calendarNotes}, null, 2)], {type: 'application/json'});
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
@@ -4042,6 +4095,7 @@ function importData(evt) {
       assets = (data.assets || []).map(a => ({...a, updatedAt: now}));
       activityLog = (data.activityLog || []).map(l => ({...l, updatedAt: now}));
       trash = (data.trash || []).map(t => ({...t, updatedAt: now}));
+      calendarNotes = (data.calendarNotes || []).map(n => ({...n, updatedAt: now}));
       renderAll();
       queueAutoSave();
       showToast('데이터를 불러왔습니다');
