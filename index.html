@@ -735,7 +735,7 @@
   <!-- CALENDAR (실제 달력 날짜 기준 마감일 뷰) -->
   <section class="tabpanel" id="tab-calendar">
     <div class="note-box" style="margin-top:0; margin-bottom:16px;">
-      프로젝트의 <strong>마감일</strong>을 실제 달력 날짜 기준으로 볼 수 있는 뷰입니다. (일정 계산기의 타임라인은 상대적 D+n 기준이라, 실제 날짜가 필요할 때는 이 달력을 참고하세요.) 날짜 칸의 프로젝트를 누르면 바로 수정 화면이 열립니다. 날짜 칸의 "+ 일정"을 누르거나 아래 "+ 일정 추가" 버튼으로, 노션처럼 시작일~종료일 범위를 지정해 여러 날에 걸친 일정(휴무, 출장, 촬영 기간 등)을 한 번에 등록할 수 있습니다.
+      프로젝트의 <strong>마감일</strong>을 실제 달력 날짜 기준으로 볼 수 있는 뷰입니다. (일정 계산기의 타임라인은 상대적 D+n 기준이라, 실제 날짜가 필요할 때는 이 달력을 참고하세요.) 날짜 칸의 프로젝트를 누르면 바로 수정 화면이 열립니다. 날짜 칸의 "+ 일정"을 누르거나 아래 "+ 일정 추가" 버튼으로, 노션처럼 시작일~종료일 범위를 지정해 여러 날에 걸친 일정(휴무, 출장, 촬영 기간 등)을 한 번에 등록할 수 있습니다. 일정 추가 시 "연결 프로젝트"를 선택하면 매번 프로젝트명을 직접 입력하지 않아도 되고(🔗 표시로 구분됨), 막대에 마우스를 올리면 연결된 프로젝트명도 함께 보입니다.
     </div>
     <div class="filter-row" style="align-items:center; justify-content:space-between;">
       <div style="display:flex; align-items:center; gap:8px;">
@@ -976,6 +976,9 @@
     <div class="form-grid">
       <div><label>시작일</label><input id="ce-start" type="date" onchange="calendarEventStartChanged_()"></div>
       <div><label>종료일</label><input id="ce-end" type="date"></div>
+      <div style="grid-column:1/-1"><label>연결 프로젝트 (선택)</label>
+        <select id="ce-project" onchange="calendarEventProjectChanged_()"></select>
+      </div>
       <div style="grid-column:1/-1"><label>내용</label><textarea id="ce-text" rows="2" placeholder="예: 클라이언트 미팅, 사내 휴무일, 촬영 기간"></textarea></div>
     </div>
     <div class="modal-footer" style="justify-content:space-between;">
@@ -2183,7 +2186,12 @@ function calendarBarItems_(monthStartKey, monthEndKey) {
     const s = n.startDate || n.date, e = n.endDate || n.date;
     if (!s || !e) return;
     if (e < monthStartKey || s > monthEndKey) return;
-    items.push({ start: s, end: e, label: n.text, type: 'note', onclick: `openCalendarEventModal('${n.id}')` });
+    const linkedProject = n.project ? projects.find(p => p.id === n.project) : null;
+    items.push({
+      start: s, end: e, label: n.text, type: 'note', onclick: `openCalendarEventModal('${n.id}')`,
+      tooltip: linkedProject ? `${n.text} (연결: ${linkedProject.name})` : n.text,
+      linked: !!linkedProject,
+    });
   });
   // 시작일 빠른 순, 같은 시작일이면 기간이 긴 것부터(레인 배정이 더 안정적으로 보임)
   items.sort((a, b) => a.start < b.start ? -1 : a.start > b.start ? 1 : (a.end < b.end ? 1 : a.end > b.end ? -1 : 0));
@@ -2244,7 +2252,8 @@ function renderCalendarView() {
       const isEnd = weekArr[endCol].key === it.end;
       const edgeCls = isStart && isEnd ? 'edge-solo' : isStart ? 'edge-start' : isEnd ? 'edge-end' : 'edge-mid';
       const labelSafe = (it.label || '(제목 없음)').replace(/</g, '&lt;');
-      return `<div class="cal-event-bar type-${it.type} ${edgeCls}" style="grid-row:${it.lane + 2}; grid-column:${startCol + 1} / ${endCol + 2};" title="${labelSafe}" onclick="${it.onclick}">${labelSafe}</div>`;
+      const titleSafe = ((it.tooltip || it.label || '(제목 없음)')).replace(/"/g, '&quot;');
+      return `<div class="cal-event-bar type-${it.type} ${edgeCls}" style="grid-row:${it.lane + 2}; grid-column:${startCol + 1} / ${endCol + 2};" title="${titleSafe}" onclick="${it.onclick}">${it.linked ? '🔗 ' : ''}${labelSafe}</div>`;
     }).join('');
     const rowsStyle = maxLane >= 0 ? `grid-template-rows: auto repeat(${maxLane + 1}, 18px);` : 'grid-template-rows: auto;';
     const daysHtml = weekArr.map((w, idx) => {
@@ -2274,7 +2283,10 @@ function openCalendarEventModal(id, prefillDateKey) {
   const startEl = document.getElementById('ce-start');
   const endEl = document.getElementById('ce-end');
   const textEl = document.getElementById('ce-text');
+  const projectEl = document.getElementById('ce-project');
   const deleteBtn = document.getElementById('ce-delete-btn');
+  projectEl.innerHTML = '<option value="">-- 선택 안 함 --</option>' +
+    projects.map(p => `<option value="${p.id}">${p.name}</option>`).join('');
   if (id) {
     const n = calendarNotes.find(x => x.id === id);
     if (!n) return;
@@ -2283,6 +2295,7 @@ function openCalendarEventModal(id, prefillDateKey) {
     startEl.value = n.startDate || n.date || '';
     endEl.value = n.endDate || n.date || '';
     textEl.value = n.text || '';
+    projectEl.value = n.project || '';
     deleteBtn.style.display = '';
   } else {
     document.getElementById('calendarEventModalTitle').textContent = '일정 추가';
@@ -2291,6 +2304,7 @@ function openCalendarEventModal(id, prefillDateKey) {
     startEl.value = key;
     endEl.value = key;
     textEl.value = '';
+    projectEl.value = '';
     deleteBtn.style.display = 'none';
   }
   document.getElementById('calendarEventModalBackdrop').classList.add('active');
@@ -2306,20 +2320,30 @@ function calendarEventStartChanged_() {
   const endEl = document.getElementById('ce-end');
   if (endEl.value && endEl.value < startEl.value) endEl.value = startEl.value;
 }
+// 연결 프로젝트를 고르면, 내용을 매번 직접 타이핑하지 않도록 비어있을 때만 프로젝트명을 채워준다
+// (이미 뭔가 적어둔 내용은 덮어쓰지 않음 — 다른 자동채움 기능과 동일한 원칙).
+function calendarEventProjectChanged_() {
+  const projectEl = document.getElementById('ce-project');
+  const textEl = document.getElementById('ce-text');
+  if (!projectEl.value || textEl.value.trim()) return;
+  const p = projects.find(x => x.id === projectEl.value);
+  if (p) textEl.value = p.name;
+}
 function saveCalendarEvent() {
   const id = document.getElementById('ce-id').value;
   let start = document.getElementById('ce-start').value;
   let end = document.getElementById('ce-end').value || start;
   const text = document.getElementById('ce-text').value.trim();
+  const project = document.getElementById('ce-project').value;
   if (!start) { showToast('시작일을 입력하세요'); return; }
   if (!text) { showToast('내용을 입력하세요'); return; }
   if (end < start) { [start, end] = [end, start]; }
   if (id) {
     const n = calendarNotes.find(x => x.id === id);
     if (!n) return;
-    n.startDate = start; n.endDate = end; n.text = text; n.updatedAt = Date.now();
+    n.startDate = start; n.endDate = end; n.text = text; n.project = project; n.updatedAt = Date.now();
   } else {
-    calendarNotes.push({ id: genId_('cnote'), startDate: start, endDate: end, text, updatedAt: Date.now() });
+    calendarNotes.push({ id: genId_('cnote'), startDate: start, endDate: end, text, project, updatedAt: Date.now() });
   }
   closeCalendarEventModal();
   renderCalendarView();
