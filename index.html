@@ -2121,6 +2121,12 @@ function saveProject() {
 function deleteProject(id) {
   if (!canDeleteProject_()) { showToast('프로젝트 삭제는 관리자 이상만 할 수 있습니다'); return; }
   if (!confirm('이 프로젝트를 삭제할까요? (휴지통으로 이동하며, 30일 안에는 복구할 수 있습니다)')) return;
+  performProjectDeletion_(id);
+}
+// 실제 삭제 처리만 담당(확인창 없음) — 화면의 삭제 버튼(deleteProject, 위)은 confirm()으로 한 번 물어본 뒤
+// 이 함수를 호출하고, AI 채팅 액션(delete_project)은 "사용자가 채팅으로 명확히 요청했다"는 것 자체가
+// 확인이므로 이 함수를 바로 호출한다(브라우저 confirm() 팝업이 채팅 흐름 중간에 뜨는 어색함을 피함).
+function performProjectDeletion_(id) {
   const now = Date.now();
   const target = projects.find(p => p.id === id);
   const deletedName = (target || {}).name || '(이름 없음)';
@@ -3251,6 +3257,20 @@ function buildAiProjectsContext_() {
       lines.push(line);
     });
   }
+  // 캘린더 일정(calendarNotes) — 프로젝트 마감일과 별개인 자유 일정. AI가 채팅으로 일정을 찾아
+  // 수정/삭제하려면(update_calendar_event/delete_calendar_event) 어떤 일정이 있는지 알아야 하므로 포함시킨다.
+  lines.push(`\n[캘린더 일정 목록] (총 ${calendarNotes.length}건)`);
+  if (!calendarNotes.length) {
+    lines.push('등록된 캘린더 일정이 없습니다.');
+  } else {
+    calendarNotes.forEach(n => {
+      const linkedProj = n.project ? (projects.find(p => p.id === n.project) || {}).name : '';
+      const s = n.startDate || n.date, e = n.endDate || n.date;
+      let line = `- ${n.text || '(내용 없음)'} | 기간: ${s}${e && e !== s ? ` ~ ${e}` : ''}`;
+      if (linkedProj) line += ` | 연결 프로젝트: ${linkedProj}`;
+      lines.push(line);
+    });
+  }
   return lines.join('\n');
 }
 function renderAiChat() {
@@ -3400,6 +3420,44 @@ function resolveStageIndex_(raw) {
   }
   return idx;
 }
+// AI 채팅에서 색상을 지정할 때 "--pal-7" 같은 내부 변수명을 그대로 알 리 없으니, 색 이름(한국어/영어)을
+// 실제 팔레트 변수로 매핑해준다. "자동"/빈 값이면 자동 배정(빈 문자열)으로, 모르는 이름이면 안전하게
+// 자동 배정으로 되돌린다(엉뚱한 값을 그대로 저장해서 색이 하나도 안 나오는 사고를 막기 위함).
+const AI_COLOR_NAME_MAP_ = {
+  '자동': '', 'auto': '',
+  '빨강': '--pal-1', '빨간색': '--pal-1', 'red': '--pal-1',
+  '주황': '--pal-2', '주황색': '--pal-2', 'orange': '--pal-2',
+  '갈색': '--pal-3', 'brown': '--pal-3',
+  '올리브': '--pal-5', 'olive': '--pal-5',
+  '연두': '--pal-6', '연두색': '--pal-6', 'lime': '--pal-6',
+  '초록': '--pal-8', '초록색': '--pal-8', '녹색': '--pal-8', 'green': '--pal-8',
+  '민트': '--pal-11', 'mint': '--pal-11',
+  '청록': '--pal-13', '청록색': '--pal-13', 'teal': '--pal-13', 'cyan': '--pal-13',
+  '하늘': '--pal-14', '하늘색': '--pal-14', 'skyblue': '--pal-14',
+  '파랑': '--pal-15', '파란색': '--pal-15', 'blue': '--pal-15',
+  '남색': '--pal-16', 'navy': '--pal-16',
+  '남보라': '--pal-17', 'indigo': '--pal-17',
+  '보라': '--pal-18', '보라색': '--pal-18', 'purple': '--pal-18', 'violet': '--pal-18',
+  '자주': '--pal-20', '자주색': '--pal-20', 'magenta': '--pal-20',
+  '분홍': '--pal-22', '핑크': '--pal-22', 'pink': '--pal-22',
+  '로즈': '--pal-23', '와인': '--pal-23', 'wine': '--pal-23',
+};
+function resolveAiColorInput_(raw) {
+  if (raw === undefined || raw === null) return undefined; // 필드 자체가 없으면 "안 바꿈"
+  const s = String(raw).trim();
+  if (!s) return '';
+  if (/^--(pal-([1-9]|1[0-9]|2[0-4])|series-[1-9])$/.test(s)) return s; // 이미 정확한 변수명이면 그대로 인정
+  return AI_COLOR_NAME_MAP_[s] !== undefined ? AI_COLOR_NAME_MAP_[s] : (AI_COLOR_NAME_MAP_[s.toLowerCase()] !== undefined ? AI_COLOR_NAME_MAP_[s.toLowerCase()] : '');
+}
+// 캘린더 일정(calendarNotes)을 내용 일부로 찾아준다. 못 찾으면 null, 여러 개 걸리면 'ambiguous'.
+function resolveCalendarNoteMatch_(textFragment) {
+  if (!textFragment) return { id: null };
+  const kw = String(textFragment).toLowerCase();
+  const matches = calendarNotes.filter(n => (n.text || '').toLowerCase().includes(kw));
+  if (matches.length === 0) return { id: null };
+  if (matches.length > 1) return { id: null, ambiguous: true };
+  return { id: matches[0].id, note: matches[0] };
+}
 // AI가 제안한 action을 실제 데이터에 반영한다. 잘못되거나 애매한 요청은 반영하지 않고 이유를 알려준다.
 function applyAiAction_(action) {
   try {
@@ -3422,6 +3480,7 @@ function applyAiAction_(action) {
         periodEnd: /^\d{4}-\d{2}-\d{2}$/.test(action.periodEnd || '') ? action.periodEnd : '',
         stageIndex: resolveStageIndex_(action.stage) !== -1 ? resolveStageIndex_(action.stage) : 0,
         note: action.note ? String(action.note).trim() : '',
+        color: resolveAiColorInput_(action.color) || '',
       };
       if (data.periodStart && data.periodEnd && data.periodEnd < data.periodStart) {
         [data.periodStart, data.periodEnd] = [data.periodEnd, data.periodStart];
@@ -3459,6 +3518,7 @@ function applyAiAction_(action) {
         [patch.periodStart, patch.periodEnd] = [patch.periodEnd, patch.periodStart];
       }
       if (typeof fields.note === 'string') patch.note = fields.note.trim();
+      if (fields.color !== undefined) patch.color = resolveAiColorInput_(fields.color);
       const stageIdx = resolveStageIndex_(fields.stage);
       if (stageIdx !== -1) patch.stageIndex = stageIdx;
       const changedKeys = Object.keys(patch);
@@ -3503,6 +3563,20 @@ function applyAiAction_(action) {
       renderAll();
       queueAutoSave();
       return { ok: true, message: `✅ 프로젝트 "${p.name}" 정보를 수정했습니다. (화면에 바로 반영됨)` };
+    }
+    if (action.action === 'delete_project') {
+      // 화면에서 직접 삭제할 때와 동일하게, 관리자 이상만 프로젝트를 삭제할 수 있다(민감 정보 등급과는
+      // 별개의 기준). 채팅이라고 이 기준을 우회할 수는 없다.
+      if (!canDeleteProject_()) return { ok: false, message: '⚠️ 프로젝트 삭제는 관리자 이상만 할 수 있습니다.' };
+      if (!action.match) return { ok: false, message: '⚠️ 어떤 프로젝트를 삭제할지 알 수 없어서 반영하지 못했습니다.' };
+      const kwDel = String(action.match).toLowerCase();
+      const delMatches = projects.filter(p => (p.name || '').toLowerCase().includes(kwDel));
+      if (delMatches.length === 0) return { ok: false, message: `⚠️ "${action.match}"과(와) 일치하는 프로젝트를 찾지 못했습니다.` };
+      if (delMatches.length > 1) return { ok: false, message: `⚠️ "${action.match}"과(와) 일치하는 프로젝트가 여러 개라 삭제하지 못했습니다. 프로젝트명을 더 정확히 말해주세요.` };
+      const delId = delMatches[0].id;
+      const delName = delMatches[0].name;
+      performProjectDeletion_(delId); // 딸린 작업/일정 연결 해제, 휴지통 이동, 활동 로그까지 화면 버튼과 동일 경로(확인창만 생략)
+      return { ok: true, message: `✅ 프로젝트 "${delName}"을(를) 삭제했습니다(휴지통으로 이동, 30일 안에 복구 가능). (화면에 바로 반영됨)` };
     }
     if (action.action === 'add_task') {
       if (!action.title || !String(action.title).trim()) {
@@ -3555,6 +3629,22 @@ function applyAiAction_(action) {
       renderAll();
       queueAutoSave();
       return { ok: true, message: `✅ 작업 "${t.title}" 정보를 수정했습니다. (화면에 바로 반영됨)` };
+    }
+    if (action.action === 'delete_task') {
+      if (!action.match) return { ok: false, message: '⚠️ 어떤 작업을 삭제할지 알 수 없어서 반영하지 못했습니다.' };
+      const kwDelT = String(action.match).toLowerCase();
+      const delTMatches = aiTasks.filter(t => (t.title || '').toLowerCase().includes(kwDelT));
+      if (delTMatches.length === 0) return { ok: false, message: `⚠️ "${action.match}"과(와) 일치하는 작업을 찾지 못했습니다.` };
+      if (delTMatches.length > 1) return { ok: false, message: `⚠️ "${action.match}"과(와) 일치하는 작업이 여러 개라 삭제하지 못했습니다. 작업명을 더 정확히 말해주세요.` };
+      const delT = delTMatches[0];
+      const delTitle = delT.title;
+      moveToTrash_('aiTasks', delT);
+      aiTasks = aiTasks.filter(t => t.id !== delT.id);
+      deletedIds.aiTasks.push(delT.id);
+      logActivity_(`🤖 AI가 "${delTitle}" 작업을 삭제함(휴지통으로 이동)`);
+      renderAll();
+      queueAutoSave();
+      return { ok: true, message: `✅ 작업 "${delTitle}"을(를) 삭제했습니다(휴지통으로 이동, 30일 안에 복구 가능). (화면에 바로 반영됨)` };
     }
     if (action.action === 'add_asset') {
       const type = action.type;
@@ -3630,6 +3720,18 @@ function applyAiAction_(action) {
       renderAll();
       queueAutoSave();
       return { ok: true, message: `✅ 자료 "${a.name}" 정보를 수정했습니다. (화면에 바로 반영됨)` };
+    }
+    if (action.action === 'delete_asset') {
+      if (!action.match) return { ok: false, message: '⚠️ 어떤 자료를 삭제할지 알 수 없어서 반영하지 못했습니다.' };
+      const kwDelA = String(action.match).toLowerCase();
+      const delAMatches = assets.filter(a => (a.name || '').toLowerCase().includes(kwDelA));
+      if (delAMatches.length === 0) return { ok: false, message: `⚠️ "${action.match}"과(와) 일치하는 자료를 찾지 못했습니다.` };
+      if (delAMatches.length > 1) return { ok: false, message: `⚠️ "${action.match}"과(와) 일치하는 자료가 여러 개라 삭제하지 못했습니다. 자료명을 더 정확히 말해주세요.` };
+      const delA = delAMatches[0];
+      const delAName = delA.name;
+      performAssetDeletion_(delA.id);
+      logActivity_(`🤖 AI가 자료 "${delAName}"을(를) 삭제함(휴지통으로 이동)`);
+      return { ok: true, message: `✅ 자료 "${delAName}"을(를) 삭제했습니다(휴지통으로 이동, 30일 안에 복구 가능). (화면에 바로 반영됨)` };
     }
     // 채팅 텍스트만으로는 AI가 이미지 실제 내용을 볼 수 없어서(텍스트 요약/태그가 아직 비어있는 이미지라면 더더욱),
     // "이미 있는 이미지의 태그/설명을 채워달라" 같은 요청엔 AI가 이 액션으로 "그 이미지를 실제로 열어서 분석해달라"고
@@ -3751,7 +3853,97 @@ function applyAiAction_(action) {
       queueAutoSave();
       return { ok: true, message: `✅ 일정 계산기 "${t.name}" 작업 정보를 수정했습니다. (화면에 바로 반영됨)` };
     }
-    // 여기까지 왔다는 건 action.action 값이 위에 정의된 8가지 중 어디에도 안 걸렸다는 뜻(AI가 오타를 냈거나
+    if (action.action === 'delete_schedule_task') {
+      if (!action.match) return { ok: false, message: '⚠️ 어떤 작업을 삭제할지 알 수 없어서 반영하지 못했습니다.' };
+      const resolvedDelSched = resolveScheduleTaskMatch_(action.match);
+      if (resolvedDelSched.ambiguous) return { ok: false, message: `⚠️ "${action.match}"과(와) 일치하는 작업이 여러 개라 삭제하지 못했습니다. 작업명을 더 정확히 말해주세요.` };
+      if (resolvedDelSched.id === null) return { ok: false, message: `⚠️ "${action.match}"과(와) 일치하는 일정 계산기 작업을 찾지 못했습니다.` };
+      const delSchedName = resolvedDelSched.name;
+      const delSchedId = resolvedDelSched.id;
+      const delSchedTarget = findScheduleTask(delSchedId);
+      if (delSchedTarget) moveToTrash_('scheduleTasks', delSchedTarget);
+      scheduleTasks = scheduleTasks.filter(t => t.id !== delSchedId);
+      scheduleTasks.forEach(t => { t.dependsOn = (t.dependsOn || []).filter(d => d !== delSchedId); });
+      deletedIds.scheduleTasks.push(delSchedId);
+      logActivity_(`🤖 AI가 일정 계산기 "${delSchedName}" 작업을 삭제함(휴지통으로 이동)`);
+      renderAll();
+      queueAutoSave();
+      return { ok: true, message: `✅ 일정 계산기 "${delSchedName}" 작업을 삭제했습니다(휴지통으로 이동, 30일 안에 복구 가능). (화면에 바로 반영됨)` };
+    }
+    // 캘린더 일정(calendarNotes) — 프로젝트 마감일과 별개로 날짜 범위를 직접 등록하는 자유 일정.
+    // 예전엔 채팅으로 전혀 다룰 수 없던 영역이라(달력 탭에서 직접 눌러야만 했음) 새로 추가함.
+    if (action.action === 'add_calendar_event') {
+      if (!action.text || !String(action.text).trim()) {
+        return { ok: false, message: '⚠️ 일정 내용이 없어서 추가하지 못했습니다.' };
+      }
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(action.startDate || '')) {
+        return { ok: false, message: '⚠️ 시작일(YYYY-MM-DD)이 없어서 일정을 추가하지 못했습니다.' };
+      }
+      let ceStart = action.startDate;
+      let ceEnd = /^\d{4}-\d{2}-\d{2}$/.test(action.endDate || '') ? action.endDate : ceStart;
+      if (ceEnd < ceStart) { [ceStart, ceEnd] = [ceEnd, ceStart]; }
+      let ceProjectId = '';
+      if (action.project) {
+        const resolved = resolveProjectMatch_(action.project);
+        if (resolved.ambiguous) return { ok: false, message: `⚠️ "${action.project}"과(와) 일치하는 프로젝트가 여러 개라 일정을 추가하지 못했습니다.` };
+        if (resolved.id === null) return { ok: false, message: `⚠️ "${action.project}"과(와) 일치하는 프로젝트를 찾지 못해 일정을 추가하지 못했습니다.` };
+        ceProjectId = resolved.id;
+      }
+      const note = { id: genId_('cnote'), startDate: ceStart, endDate: ceEnd, text: String(action.text).trim(), project: ceProjectId, color: resolveAiColorInput_(action.color) || '', updatedAt: Date.now() };
+      calendarNotes.push(note);
+      logActivity_(`🤖 AI가 캘린더 일정 "${note.text}"을(를) 추가함`);
+      renderAll();
+      queueAutoSave();
+      return { ok: true, message: `✅ 캘린더 일정 "${note.text}"을(를) 추가했습니다. (화면에 바로 반영됨)` };
+    }
+    if (action.action === 'update_calendar_event') {
+      if (!action.match) return { ok: false, message: '⚠️ 어떤 일정을 수정할지 알 수 없어서 반영하지 못했습니다.' };
+      const resolvedNote = resolveCalendarNoteMatch_(action.match);
+      if (resolvedNote.ambiguous) return { ok: false, message: `⚠️ "${action.match}"과(와) 일치하는 일정이 여러 개라 반영하지 못했습니다. 일정 내용을 더 정확히 말해주세요.` };
+      if (resolvedNote.id === null) return { ok: false, message: `⚠️ "${action.match}"과(와) 일치하는 캘린더 일정을 찾지 못했습니다.` };
+      const n = resolvedNote.note;
+      const fields = action.fields || {};
+      const patch = {};
+      if (typeof fields.text === 'string' && fields.text.trim()) patch.text = fields.text.trim();
+      if (/^\d{4}-\d{2}-\d{2}$/.test(fields.startDate || '')) patch.startDate = fields.startDate;
+      if (/^\d{4}-\d{2}-\d{2}$/.test(fields.endDate || '')) patch.endDate = fields.endDate;
+      const nextStart = patch.startDate || n.startDate;
+      const nextEnd = patch.endDate || n.endDate;
+      if ((patch.startDate || patch.endDate) && nextEnd < nextStart) {
+        patch.startDate = nextEnd; patch.endDate = nextStart;
+      }
+      if (fields.project !== undefined) {
+        if (!fields.project) { patch.project = ''; }
+        else {
+          const resolved = resolveProjectMatch_(fields.project);
+          if (resolved.ambiguous) return { ok: false, message: `⚠️ "${fields.project}"과(와) 일치하는 프로젝트가 여러 개라 반영하지 못했습니다.` };
+          if (resolved.id === null) return { ok: false, message: `⚠️ "${fields.project}"과(와) 일치하는 프로젝트를 찾지 못해 반영하지 못했습니다.` };
+          patch.project = resolved.id;
+        }
+      }
+      if (fields.color !== undefined) patch.color = resolveAiColorInput_(fields.color);
+      if (!Object.keys(patch).length) return { ok: false, message: '⚠️ 반영할 변경 내용이 없습니다.' };
+      Object.assign(n, patch, { updatedAt: Date.now() });
+      logActivity_(`🤖 AI가 캘린더 일정 "${n.text}" 정보를 수정함 (${Object.keys(patch).join(', ')})`);
+      renderAll();
+      queueAutoSave();
+      return { ok: true, message: `✅ 캘린더 일정 "${n.text}" 정보를 수정했습니다. (화면에 바로 반영됨)` };
+    }
+    if (action.action === 'delete_calendar_event') {
+      if (!action.match) return { ok: false, message: '⚠️ 어떤 일정을 삭제할지 알 수 없어서 반영하지 못했습니다.' };
+      const resolvedDelNote = resolveCalendarNoteMatch_(action.match);
+      if (resolvedDelNote.ambiguous) return { ok: false, message: `⚠️ "${action.match}"과(와) 일치하는 일정이 여러 개라 삭제하지 못했습니다. 일정 내용을 더 정확히 말해주세요.` };
+      if (resolvedDelNote.id === null) return { ok: false, message: `⚠️ "${action.match}"과(와) 일치하는 캘린더 일정을 찾지 못했습니다.` };
+      const delNoteText = resolvedDelNote.note.text;
+      calendarNotes = calendarNotes.filter(x => x.id !== resolvedDelNote.id);
+      deletedIds.calendarNotes.push(resolvedDelNote.id);
+      logActivity_(`🤖 AI가 캘린더 일정 "${delNoteText}"을(를) 삭제함`);
+      renderAll();
+      queueAutoSave();
+      // 캘린더 일정은 (프로젝트/작업/자료와 달리) 휴지통을 거치지 않고 바로 영구 삭제되는 기존 방식 그대로라, 복구는 안 됨을 알려준다.
+      return { ok: true, message: `✅ 캘린더 일정 "${delNoteText}"을(를) 삭제했습니다(휴지통을 거치지 않는 항목이라 복구는 되지 않습니다). (화면에 바로 반영됨)` };
+    }
+    // 여기까지 왔다는 건 action.action 값이 위에 정의된 것 중 어디에도 안 걸렸다는 뜻(AI가 오타를 냈거나
     // 지원하지 않는 액션명을 썼거나). 예전엔 이때 메시지 없이 조용히 무시해서, 채팅에서는 반영된 것처럼
     // 보이는데 실제 화면에는 아무 변화가 없는 문제가 있었다 — 그래서 반드시 경고를 보여주게 바꿈.
     return { ok: false, message: `⚠️ AI가 "${action.action}"라는 동작을 시도했는데, 지원하지 않는 동작이라 반영하지 못했습니다.` };
@@ -4468,6 +4660,10 @@ function updateAssetField(id, field, value) {
 }
 function deleteAsset(id) {
   if (!confirm('이 자료를 삭제할까요? (휴지통으로 이동하며, 30일 안에는 복구할 수 있습니다)')) return;
+  performAssetDeletion_(id);
+}
+// AI 채팅 액션(delete_asset)에서도 재사용할 수 있도록 확인창 없이 실제 삭제만 하는 부분을 분리했다.
+function performAssetDeletion_(id) {
   const target = assets.find(a => a.id === id);
   if (target) moveToTrash_('assets', target);
   assets = assets.filter(a => a.id !== id);
