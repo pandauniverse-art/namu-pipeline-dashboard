@@ -1292,6 +1292,21 @@ const COLLECTION_LABEL_ = { projects: '프로젝트', aiTasks: '작업', schedul
 const CLOUD_FUNCTIONS_READY = false; // 자동 이메일점검 등 일부 기능은 Blaze(카드 등록) 전환 후 활성화됩니다
 const AI_PROXY_URL = 'https://namu-ai-proxy.vercel.app/api/ai-input'; // AI 입력 기능은 Vercel 서버리스 함수를 통해 Groq API와 연결됩니다
 const IMAGE_UPLOAD_PROXY_URL = 'https://namu-ai-proxy.vercel.app/api/upload-image'; // 이미지 자료는 이 Vercel 서버리스 함수를 통해 GitHub 저장소에 커밋된다
+// 이 저장소가 public이라 위 프록시 URL도 누구나 볼 수 있다. 프록시가 요청을 진짜 우리 회사 로그인 사용자가
+// 보낸 것인지 서버에서 검증할 수 있도록, 매 호출마다 지금 로그인한 사람의 Firebase ID 토큰을
+// Authorization: Bearer 헤더로 같이 실어 보낸다(프록시 쪽 verifyCompanyUser와 짝을 이룸).
+// AI_PROXY_URL / IMAGE_UPLOAD_PROXY_URL을 호출하는 곳은 항상 fetch를 직접 쓰지 말고 이 함수를 거쳐야 한다.
+function callAiProxy_(url, payload) {
+  const tokenPromise = (fbAuth.currentUser ? fbAuth.currentUser.getIdToken() : Promise.resolve('')).catch(() => '');
+  return tokenPromise.then(token => fetch(url, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { Authorization: 'Bearer ' + token } : {}),
+    },
+    body: JSON.stringify(payload),
+  }));
+}
 let autoSaveTimer = null;
 let autoSaveSuppressed = true; // 초기 로딩 중에는 자동저장을 잠깐 막아서 방금 불러온 데이터를 그대로 되쏘는 것을 방지
 let hasUnsavedChanges_ = false; // 900ms 자동저장 대기/진행 중인 변경사항이 있는지 — 이 사이에 탭을 닫으면 사라질 수 있어 경고에 사용
@@ -4032,11 +4047,7 @@ function submitAiInput() {
   scrollAiChatToBottom_();
   setAiTyping_(true);
   const context = buildAiProjectsContext_();
-  fetch(AI_PROXY_URL, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ text, context, history: historyForRequest }),
-  })
+  callAiProxy_(AI_PROXY_URL, { text, context, history: historyForRequest })
     .then(r => r.json())
     .then(data => {
       setAiTyping_(false);
@@ -4131,11 +4142,7 @@ function resizeImageFile_(file) {
 // (예외를 던지지 않음), 호출하는 쪽에서 dataUrl을 Firestore에 직접 저장하는 방식으로 자동 대체한다.
 function uploadAssetImageToStorage_(assetId, dataUrl) {
   if (!dataUrl) return Promise.resolve(null);
-  return fetch(IMAGE_UPLOAD_PROXY_URL, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ filename: assetId + '.jpg', dataUrl }),
-  })
+  return callAiProxy_(IMAGE_UPLOAD_PROXY_URL, { filename: assetId + '.jpg', dataUrl })
     .then(r => r.json().then(data => ({ ok: r.ok, data })))
     .then(({ ok, data }) => {
       if (!ok || !data || !data.url) { console.warn('이미지 업로드 실패, Firestore 직접 저장으로 대체합니다.', data && data.error); return null; }
@@ -4267,11 +4274,7 @@ function analyzeImageWithAi_(dataUrl) {
     '어느 대표 키워드에도 안 맞을 때만 category를 "미분류"로 해줘. 태그는 3~6개 정도로.\n' +
     '[현재 대표 키워드/하위 키워드 목록]\n' + (taxonomyHint || '(아직 등록된 카테고리 없음)') + '\n' +
     '이미지 속 인물/의상/촬영구도/배경장소/스타일톤/자료용도/소품 등이 드러나면 태그에 포함해줘.';
-  return fetch(AI_PROXY_URL, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ text: prompt, image: dataUrl }),
-  })
+  return callAiProxy_(AI_PROXY_URL, { text: prompt, image: dataUrl })
     .then(r => r.json())
     .then(data => {
       if (data.error) throw new Error(data.error);
@@ -4613,11 +4616,7 @@ function analyzePromptWithAi_(text) {
     '단순히 프롬프트 내용을 그대로 옮겨 적지 말고, 실제로 어떤 장면/스타일/용도에 적합한지 해석해서 다음 JSON 형식으로만, 다른 설명 없이 답해줘:\n' +
     '{"name": "20자 내외 한국어 이름(용도가 드러나게, 예: \'따뜻한 실내 인물컷용 프롬프트\')", "tags": ["태그1", "태그2", "태그3"], "summary": "25자 내외 한국어 한 줄 요약(이 프롬프트를 언제/어떤 장면에 쓰면 좋은지)", "description": "40자 내외 한국어 설명(적합한 상황·톤·스타일과 활용 팁)"}\n' +
     '프롬프트 내용:\n' + text;
-  return fetch(AI_PROXY_URL, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ text: prompt }),
-  })
+  return callAiProxy_(AI_PROXY_URL, { text: prompt })
     .then(r => r.json())
     .then(data => {
       if (data.error) throw new Error(data.error);
@@ -4686,11 +4685,7 @@ function generateAssetAiSummary_(asset) {
   const askAi = (prompt, image) => {
     const payload = { text: prompt };
     if (image) payload.image = image;
-    fetch(AI_PROXY_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-    })
+    callAiProxy_(AI_PROXY_URL, payload)
       .then(r => r.json())
       .then(data => finish(data.error ? ('요약 실패: ' + data.error) : (data.reply || '').trim()))
       .catch(err => finish('요약 실패: ' + err.message));
