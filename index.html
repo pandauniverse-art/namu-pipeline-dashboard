@@ -1371,20 +1371,31 @@ function rememberDriveAccessTokenFromResult_(result) {
   if (cred && cred.accessToken) {
     driveAccessToken_ = cred.accessToken;
     driveAccessTokenExpiresAt_ = Date.now() + 55 * 60 * 1000; // 보통 1시간 유효 — 여유를 두고 55분으로 잡음
+  } else {
+    // 로그인/재인증 자체는 성공했는데 구글 드라이브용 액세스 토큰이 안 실려온 경우 — 원인 파악용으로
+    // 콘솔에 남겨둔다(예: 사용자가 동의 화면에서 드라이브 접근 권한 체크를 해제했거나, 구글 클라우드
+    // 콘솔의 OAuth 동의 화면에 이 계정이 테스트 사용자로 등록되어 있지 않은 경우 등).
+    console.warn('구글 드라이브 액세스 토큰 없음 — cred:', cred, '/ result:', result);
   }
 }
 // 지금 갖고 있는 토큰이 아직 유효하면 그대로 쓰고, 없거나 만료됐으면(새로고침 직후 등) 로그인 팝업을 한 번
 // 더 띄워서 새로 받아온다. 이미 한 번 동의한 권한이라 보통 계정 선택 정도로 빠르게 끝난다.
+// 원래는 reauthenticateWithPopup()을 썼는데, 이미 로그인된 계정을 다시 인증할 때는 (신원 확인 자체는
+// 성공해도) 결과에 구글 OAuth 액세스 토큰이 아예 빠져서 돌아오는 경우가 있었다(select_account를
+// 강제해도 마찬가지). 구글/파이어베이스 공식 문서에서 "액세스 토큰을 확실히 받는 방법"으로 안내하는
+// 것도 reauthenticateWithPopup이 아니라 signInWithPopup 쪽이라, 여기서도 같은 계정으로 signInWithPopup을
+// 다시 호출하는 방식으로 바꿨다 — 이미 로그인된 같은 계정이면 세션이 끊기지 않고 토큰만 새로 받아온다.
 function getDriveAccessToken_() {
   if (driveAccessToken_ && Date.now() < driveAccessTokenExpiresAt_) return Promise.resolve(driveAccessToken_);
   const provider = new firebase.auth.GoogleAuthProvider();
-  // signInWithGoogle()과 같은 이유로 prompt: 'select_account'를 강제한다 — 이게 없으면 이미 로그인된
-  // 세션이 조용히 재사용되면서 결과에 액세스 토큰이 빠지는 경우가 있었다.
   provider.setCustomParameters({ hd: ALLOWED_EMAIL_DOMAIN, prompt: 'select_account' });
   provider.addScope(DRIVE_UPLOAD_SCOPE_);
-  return fbAuth.currentUser.reauthenticateWithPopup(provider).then(result => {
+  return fbAuth.signInWithPopup(provider).then(result => {
     rememberDriveAccessTokenFromResult_(result);
-    if (!driveAccessToken_) throw new Error('구글 드라이브 접근 권한을 가져오지 못했습니다. 팝업에서 계정을 다시 선택해 권한을 승인해주세요. 그래도 안 되면 브라우저 팝업 차단 설정을 확인해주세요.');
+    if (!driveAccessToken_) {
+      console.error('구글 드라이브 액세스 토큰을 못 받아옴. signInWithPopup 결과:', result);
+      throw new Error('구글 드라이브 접근 권한을 가져오지 못했습니다. 브라우저 콘솔(F12)에 찍힌 상세 로그를 관리자에게 전달해주세요.');
+    }
     return driveAccessToken_;
   });
 }
