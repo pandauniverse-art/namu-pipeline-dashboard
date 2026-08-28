@@ -1378,11 +1378,13 @@ function rememberDriveAccessTokenFromResult_(result) {
 function getDriveAccessToken_() {
   if (driveAccessToken_ && Date.now() < driveAccessTokenExpiresAt_) return Promise.resolve(driveAccessToken_);
   const provider = new firebase.auth.GoogleAuthProvider();
-  provider.setCustomParameters({ hd: ALLOWED_EMAIL_DOMAIN });
+  // signInWithGoogle()과 같은 이유로 prompt: 'select_account'를 강제한다 — 이게 없으면 이미 로그인된
+  // 세션이 조용히 재사용되면서 결과에 액세스 토큰이 빠지는 경우가 있었다.
+  provider.setCustomParameters({ hd: ALLOWED_EMAIL_DOMAIN, prompt: 'select_account' });
   provider.addScope(DRIVE_UPLOAD_SCOPE_);
   return fbAuth.currentUser.reauthenticateWithPopup(provider).then(result => {
     rememberDriveAccessTokenFromResult_(result);
-    if (!driveAccessToken_) throw new Error('구글 드라이브 접근 권한을 가져오지 못했습니다. 팝업 차단을 확인해주세요.');
+    if (!driveAccessToken_) throw new Error('구글 드라이브 접근 권한을 가져오지 못했습니다. 팝업에서 계정을 다시 선택해 권한을 승인해주세요. 그래도 안 되면 브라우저 팝업 차단 설정을 확인해주세요.');
     return driveAccessToken_;
   });
 }
@@ -1932,7 +1934,11 @@ function renderTrash() {
 // ---------- 로그인 (Google, namucreative.com 계정만 허용) ----------
 function signInWithGoogle() {
   const provider = new firebase.auth.GoogleAuthProvider();
-  provider.setCustomParameters({ hd: ALLOWED_EMAIL_DOMAIN });
+  // prompt: 'select_account' 없이는 이미 로그인된 세션을 구글이 조용히(silent) 재사용해버려서, 이 경우
+  // Firebase가 돌려주는 결과에 OAuth 액세스 토큰이 아예 안 담기는 경우가 있었다(구글 드라이브 업로드가
+  // "접근 권한을 가져오지 못했습니다" 오류로 실패하던 원인). 계정 선택 단계를 한 번 거치게 강제해서
+  // 매번 정상적으로 액세스 토큰을 받아오게 한다.
+  provider.setCustomParameters({ hd: ALLOWED_EMAIL_DOMAIN, prompt: 'select_account' });
   provider.addScope(DRIVE_UPLOAD_SCOPE_); // 영상 파일을 구글 드라이브로 올릴 때 필요한 권한을 로그인 시점에 같이 받아둔다
   fbAuth.signInWithPopup(provider).then(result => {
     rememberDriveAccessTokenFromResult_(result);
