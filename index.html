@@ -1116,7 +1116,7 @@
     <h3>⠿ AI 어시스턴트</h3>
     <button type="button" onclick="clearAiChat()" style="font-size:11px; padding:3px 8px;">대화 지우기</button>
   </div>
-  <div style="font-size:11px; color:var(--text-muted);">현재 등록된 프로젝트·작업·자료 데이터를 참고해서 답변합니다. "OO 프로젝트 담당자 OO로 추가해줘", "OO 작업 완료로 바꿔줘" 처럼 요청하면 실제로 프로젝트/작업을 추가·수정해줘요(삭제는 지원하지 않음) — 반영된 후에는 화면에서 한 번 확인해 주세요.<br>💡 이미지를 복사한 뒤 여기에 Ctrl+V 하면, AI가 내용을 분석해서 이름·태그를 붙여 자료 보관함(이미지)에 자동으로 등록해줘요.</div>
+  <div style="font-size:11px; color:var(--text-muted);">현재 등록된 프로젝트·작업·자료 데이터를 참고해서 답변합니다. "OO 프로젝트 담당자 OO로 추가해줘", "OO 작업 완료로 바꿔줘" 처럼 요청하면 실제로 프로젝트/작업을 추가·수정해줘요(삭제는 지원하지 않음) — 반영된 후에는 화면에서 한 번 확인해 주세요.<br>💡 이미지를 복사한 뒤 여기에 Ctrl+V 하면, AI가 내용을 분석해서 이름·태그를 붙여 자료 보관함(이미지)에 자동으로 등록해줘요. 영상 파일은 아래 "🎬 영상 첨부" 버튼으로 올리면 구글 드라이브에 저장되고 자료 보관함(영상)에 자동 등록돼요.</div>
   <div style="display:flex; gap:6px; flex-wrap:wrap;">
     <button type="button" onclick="askAiQuickSummary('inprogress')" style="font-size:11px; padding:5px 9px;">진행 중 프로젝트 요약</button>
     <button type="button" onclick="askAiQuickSummary('deadline')" style="font-size:11px; padding:5px 9px;">마감 임박 순 정리</button>
@@ -1124,6 +1124,8 @@
   </div>
   <div class="ai-chat-log" id="aiChatLog"></div>
   <div style="display:flex; gap:6px; align-items:flex-end;">
+    <input type="file" id="aiChatVideoFile" accept="video/*" style="display:none" onchange="handleAiChatVideoFileSelected_()">
+    <button type="button" id="aiChatVideoAttachBtn" title="영상 파일 첨부(구글 드라이브에 저장)" onclick="document.getElementById('aiChatVideoFile').click()" style="white-space:nowrap;">🎬 영상 첨부</button>
     <textarea id="aiInputText" rows="2" placeholder="궁금한 걸 물어보세요… (Enter 전송, Shift+Enter 줄바꿈)" onkeydown="handleAiInputKeydown(event)"></textarea>
     <button class="primary" id="aiSendBtn" onclick="submitAiInput()" style="white-space:nowrap;">보내기</button>
   </div>
@@ -4744,6 +4746,69 @@ function registerAiChatImageAsAsset_(file) {
     renderAiChat();
     scrollAiChatToBottom_();
   });
+}
+// 이미지는 클립보드 붙여넣기(Ctrl+V)로 받을 수 있지만, 영상 파일은 보통 클립보드에 "복사"해서 붙여넣는
+// 방식 자체가 없어서(스크린샷과 달리) 별도의 "🎬 영상 첨부" 버튼으로 파일을 직접 선택하게 한다.
+// 진행 중에는 말풍선 하나를 계속 갱신해서 업로드 진행률(%)을 보여준다.
+function setVideoUploadBubble_(text) {
+  const log = document.getElementById('aiChatLog');
+  if (!log) return;
+  let bubble = document.getElementById('aiVideoUploadBubble');
+  if (text) {
+    if (!bubble) {
+      bubble = document.createElement('div');
+      bubble.id = 'aiVideoUploadBubble';
+      bubble.className = 'ai-msg assistant';
+      log.appendChild(bubble);
+    }
+    bubble.textContent = text;
+    log.scrollTop = log.scrollHeight;
+  } else if (bubble) {
+    bubble.remove();
+  }
+}
+function handleAiChatVideoFileSelected_() {
+  const fileInput = document.getElementById('aiChatVideoFile');
+  const file = fileInput.files[0];
+  if (!file) return;
+  registerAiChatVideoAsAsset_(file);
+  fileInput.value = ''; // 같은 파일을 연달아 다시 선택해도 onchange가 다시 뜨도록 비워둔다
+}
+let aiChatVideoUploading_ = false;
+function registerAiChatVideoAsAsset_(file) {
+  const panel = document.getElementById('aiPanel');
+  if (!panel.classList.contains('active')) toggleAiPanel();
+  if (aiChatVideoUploading_) { showToast('이미 영상을 업로드하는 중입니다. 끝난 뒤에 다시 시도해주세요.'); return; }
+  aiChatVideoUploading_ = true;
+  const attachBtn = document.getElementById('aiChatVideoAttachBtn');
+  if (attachBtn) attachBtn.disabled = true;
+  aiChatHistory.push({ role: 'user', content: `🎬 영상 파일을 첨부했습니다 — 구글 드라이브에 업로드할게요: "${file.name}"` });
+  renderAiChat();
+  scrollAiChatToBottom_();
+  setVideoUploadBubble_(`"${file.name}" 업로드 준비 중…`);
+  uploadVideoFileToDrive_(file, pct => setVideoUploadBubble_(`"${file.name}" 업로드 중… ${pct}%`))
+    .then(result => {
+      setVideoUploadBubble_(null);
+      aiChatVideoUploading_ = false;
+      if (attachBtn) attachBtn.disabled = false;
+      if (!result.ok) {
+        aiChatHistory.push({ role: 'assistant', content: `⚠️ 영상 업로드에 실패했습니다: ${result.error}` });
+        renderAiChat();
+        scrollAiChatToBottom_();
+        return;
+      }
+      // 파일 업로드로 받은 영상은(URL 직접 붙여넣기와 달리) 사용자가 이름/설명을 따로 안 적기 때문에,
+      // 원본 파일명(확장자 제외)을 이름으로 쓴다 — 이미지 쪽의 "이름을 못 받으면 타임스탬프로 대체" 규칙과 같은 취지.
+      const name = file.name.replace(/\.[^.]+$/, '') || `영상 (업로드 ${new Date().toLocaleString('ko-KR')})`;
+      const asset = { id: genId_('a'), type: 'video', name, tags: [], projects: [], url: result.url, description: '', updatedAt: Date.now() };
+      assets.push(asset);
+      renderAssets();
+      queueAutoSave();
+      logActivity_(`🤖 AI 채팅으로 영상 자료 "${name}"을(를) 구글 드라이브에 업로드/등록함`);
+      aiChatHistory.push({ role: 'assistant', content: `✅ 자료 보관함에 영상으로 등록했습니다: "${name}" (구글 드라이브에 저장됨)` });
+      renderAiChat();
+      scrollAiChatToBottom_();
+    });
 }
 // ---------- 태그 카테고리 피커 (대표 키워드 안에서 하위 키워드 선택 + 새 태그 직접 추가) ----------
 // '+ 자료 추가' 모달과 카드별 '태그 편집' 팝업 두 곳에서 똑같이 쓰는 컴포넌트라, 어느 화면인지를
