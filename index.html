@@ -1204,20 +1204,20 @@
   <div class="modal" style="max-width:520px;">
     <h2>스토리보드로 컷리스트 자동 생성</h2>
     <div style="font-size:12px; color:var(--text-muted); margin-bottom:10px;">
-      스토리보드 이미지(JPG/PNG), PDF, 또는 이미 컷이 정리된 스프레드시트(엑셀/CSV)를 올리세요. 이미지/PDF는 AI가 컷을 나눠서 분석하고,
-      스프레드시트는 AI 없이 표 내용을 그대로 컷으로 불러옵니다. 여러 파일을 한 번에 올릴 수 있습니다.
+      스토리보드 이미지(JPG/PNG), PDF, 또는 이미 컷이 정리된 스프레드시트(엑셀/CSV)를 올리면 그 내용을 컷으로 나눠 불러옵니다.
+      <strong>파일이 없어도 괜찮습니다</strong> — 아래 "키워드/제작의도"에 만들고 싶은 영상을 설명해두면 AI가 스토리보드(콘티)를 처음부터 새로 기획해서 컷리스트로 채워줍니다.
     </div>
     <div class="form-grid">
       <div style="grid-column:1/-1"><label>연결 프로젝트</label>
         <select id="cai-project" onchange="cutAiProjectChanged_()"></select>
       </div>
-      <div style="grid-column:1/-1"><label>키워드/제작의도 (선택, AI 분석에 참고용으로 같이 전달됨)</label>
+      <div style="grid-column:1/-1"><label>키워드/제작의도 (파일 없이 시작하면 필수, 있으면 분석에 참고용으로 같이 전달됨)</label>
         <textarea id="cai-context" rows="2" placeholder="예: 키오스크 매장 광고, 밝고 경쾌한 톤, 제품 클로즈업 강조 / 30초 브랜드필름, 잔잔하고 감성적인 톤 등"></textarea>
-        <div style="font-size:11px; color:var(--text-muted); margin-top:2px;">스토리보드 그림만으로는 알기 어려운 톤·의도·강조 포인트를 적어두면 AI가 설명·샷사이즈를 더 맞게 채워줍니다. 프로젝트를 고르면 프로젝트 비고란 내용이 비어있을 때 자동으로 채워집니다.</div>
+        <div style="font-size:11px; color:var(--text-muted); margin-top:2px;">파일 없이 이것만 입력하고 "분석 시작"을 누르면 AI가 여기 적힌 의도만으로 씬·컷 구성을 처음부터 창작합니다. 파일을 올릴 때는 스토리보드 그림만으로는 알기 어려운 톤·강조 포인트를 보완하는 참고용으로 쓰입니다. 프로젝트를 고르면 프로젝트 비고란 내용이 비어있을 때 자동으로 채워집니다.</div>
       </div>
-      <div style="grid-column:1/-1"><label>파일 선택</label>
+      <div style="grid-column:1/-1"><label>파일 선택 (선택 사항)</label>
         <input type="file" id="cai-files" accept="image/*,application/pdf,.xlsx,.xls,.csv" multiple onchange="updateCutAiFileListStatus_()">
-        <div style="font-size:11px; color:var(--text-muted); margin-top:4px;">💡 스토리보드 화면을 캡처했다면 파일 선택 없이 이 창에 그대로 Ctrl+V(붙여넣기)해도 추가됩니다(여러 번 붙여넣으면 계속 쌓입니다).</div>
+        <div style="font-size:11px; color:var(--text-muted); margin-top:4px;">💡 스토리보드 화면을 캡처했다면 파일 선택 없이 이 창에 그대로 Ctrl+V(붙여넣기)해도 추가됩니다(여러 번 붙여넣으면 계속 쌓입니다). 파일을 하나도 안 올리면 위 키워드/제작의도만으로 AI가 새로 기획합니다.</div>
         <div id="cai-file-status" style="font-size:11px; color:var(--text-secondary); margin-top:4px;"></div>
       </div>
     </div>
@@ -7377,12 +7377,16 @@ function toggleCutAiLocalSettings_() {
 //   2) window.NamuLocalAI가 자동 탐색·실측해서 배정한 스토리보드 분석용(vision) 모델
 //   3) 위 둘 다 없으면 null이 아니라 "쓸 게 없음" 상태를 명시적으로 돌려준다(절대 조용히
 //      클라우드로 넘어가지 않기 위함 — callVisionAiHybrid_에서 이 상태를 에러로 던진다).
-function resolveCutAiLocalTarget_() {
+// taskKey: 자동 배정된 로컬 모델을 찾을 때 어떤 작업 기준으로 고를지(js/local-ai-manager.js의 TASKS 참고).
+// 이미지가 있는 기존 흐름(스토리보드 나누기)은 비전 모델이 필요하니 'storyboardVision'을, 파일 없이
+// 텍스트만으로 새로 기획하는 흐름은 비전이 필요 없으니 'cutlist'를 넘긴다. 수동 지정 주소/모델을 쓰는
+// 경우는 어차피 사용자가 고른 값 그대로라 taskKey와 무관하다.
+function resolveCutAiLocalTarget_(taskKey) {
   const local = loadCutAiLocalSettings_();
   if (!local.enabled) return null; // 로컬 사용 자체를 안 켰으면 원래대로 클라우드
   if (local.endpoint) return { endpoint: local.endpoint, model: local.model || 'default', source: 'manual' };
   if (window.NamuLocalAI && window.NamuLocalAI.manager) {
-    const auto = window.NamuLocalAI.manager.getAssignedModel('storyboardVision');
+    const auto = window.NamuLocalAI.manager.getAssignedModel(taskKey || 'storyboardVision');
     if (auto) return { endpoint: auto.chatEndpoint.replace(/\/$/, '') + '/v1/chat/completions', model: auto.model, source: 'auto' };
   }
   return { endpoint: '', model: '', source: 'none' };
@@ -7452,6 +7456,84 @@ function callVisionAiWithFallbackChoice_(prompt, imageDataUrl) {
           reject(new Error('다른 로컬 모델을 지정한 뒤 "분석 시작"을 다시 눌러주세요.'));
         },
         onUseCloud: () => resolve(callAiProxy_(AI_PROXY_URL, { text: prompt, image: imageDataUrl }).then(r => r.json())),
+        onCancel: () => reject(new Error('사용자가 취소했습니다.')),
+      });
+    });
+  });
+}
+// ---------- 파일 없이 "키워드/제작의도"만으로 스토리보드(콘티)를 처음부터 새로 기획 ----------
+// buildCutSplitPrompt_()가 "이미 있는 그림을 컷으로 나누는" 것이라면, 이건 "그림 없이 글로만 창작"하는
+// 것 — 그래서 결과 JSON 스키마를 parseCutAiReply_()가 기대하는 형태와 완전히 똑같이 맞춰서 파싱 로직을
+// 그대로 재사용한다.
+function buildCutTextGenPrompt_(context) {
+  const contextLine = context && context.trim()
+    ? `다음은 이 영상의 제작 의도/키워드/컨셉이야: "${context.trim()}".\n`
+    : '별도로 전달된 제작 의도가 없으니, 일반적인 홍보/브랜드 영상 한 편을 가정하고 자유롭게 기획해줘.\n';
+  return contextLine +
+    '이 내용만 보고(참고할 스토리보드 그림은 없음), 실제 영상 제작 현장에서 쓰는 스토리보드(콘티)를 처음부터 새로 기획해서 컷리스트 표 형식으로 작성해줘. ' +
+    '오프닝-전개-마무리 등 전체 흐름이 자연스럽게 이어지도록 장소/씬을 나누고, 같은 장소/씬 안에는 여러 컷을 배치해줘(보통 씬당 2~5컷 정도). ' +
+    '전체 분량은 15~25컷 정도로 구성해줘(너무 짧거나 과하게 길지 않게). ' +
+    '다음 JSON 형식으로만, 다른 설명 없이 답해줘:\n' +
+    '{"cuts": [{"scene": "이 컷이 속한 장소/씬 이름(예: \'#S01_이른 아침_주택가 도로\'처럼 시간대·장소가 드러나게)", ' +
+    '"cutNo": "씬 안에서 순서대로 1부터", ' +
+    '"description": "이 컷의 장면/액션/카메라 앵글을 25~40자 내외 한국어로 설명(실제 컷리스트처럼 구체적으로, 새로 창작)", ' +
+    '"transition": "다음 컷으로 넘어갈 때의 트랜지션(컷/디졸브/페이드인/페이드아웃/와이프 종류/드론 상승 등, 특별한 게 없으면 \'-\')", ' +
+    '"shotType": "샷 사이즈(익스트림롱샷/롱샷/풀샷/미디엄샷/클로즈업/익스트림클로즈업 중 하나)", ' +
+    '"cameraMove": "카메라 무브먼트(고정/팬/틸트/줌인/줌아웃/트래킹/크레인/핸드헬드 등)", ' +
+    '"durationSec": 예상_길이_초_숫자, "notes": "대사·자막·효과 등 그 외 참고 메모"}]}';
+}
+// 이미지 없이 텍스트만 주고받는 호출 — callVisionAiHybrid_와 같은 로컬/클라우드 이중 경로·에러 처리
+// 원칙을 그대로 따르되, 멀티모달 메시지 배열 대신 순수 텍스트 프롬프트만 보낸다.
+function callTextAiHybrid_(prompt) {
+  const target = resolveCutAiLocalTarget_('cutlist');
+  if (!target) {
+    return callAiProxy_(AI_PROXY_URL, { text: prompt }).then(r => r.json());
+  }
+  if (!target.endpoint) {
+    const err = new Error('로컬 AI 사용이 켜져 있지만 사용할 서버/모델을 찾지 못했습니다. 로컬 AI 서버를 켜고 상태 패널에서 "다시 탐색"을 누르거나, 아래 칸에 주소를 직접 입력해주세요.');
+    err.isLocalAiUnavailable = true;
+    return Promise.reject(err);
+  }
+  return fetch(target.endpoint, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      model: target.model || 'default',
+      messages: [{ role: 'user', content: prompt }],
+      temperature: 0.5,
+      max_tokens: 4096,
+      num_predict: 4096,
+    }),
+  }).then(r => {
+    if (!r.ok) throw new Error(`로컬 AI 서버 응답 오류 (${r.status})`);
+    return r.json();
+  }).then(data => {
+    const reply = data && data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content;
+    if (!reply) throw new Error('로컬 AI 서버 응답에서 답변을 찾지 못했습니다.');
+    return { reply };
+  }).catch(err => {
+    if (err && err.isLocalAiUnavailable) throw err;
+    const wrapped = new Error('로컬 AI 서버 호출 실패: ' + err.message + ' (주소·CORS 설정을 확인해주세요)');
+    wrapped.isLocalAiFailure = true;
+    throw wrapped;
+  });
+}
+function callTextAiWithFallbackChoice_(prompt) {
+  return callTextAiHybrid_(prompt).catch(err => {
+    if (!err || (!err.isLocalAiFailure && !err.isLocalAiUnavailable) || !window.NamuLocalAI || !window.NamuLocalAI.ui) {
+      throw err;
+    }
+    return new Promise((resolve, reject) => {
+      window.NamuLocalAI.ui.showFallbackChoice({
+        message: err.message,
+        onRetryLocal: () => resolve(callTextAiWithFallbackChoice_(prompt)),
+        onPickModel: () => {
+          document.getElementById('cai-local-fields').style.display = '';
+          const modelInput = document.getElementById('cai-local-model');
+          if (modelInput) modelInput.focus();
+          reject(new Error('다른 로컬 모델을 지정한 뒤 "분석 시작"을 다시 눌러주세요.'));
+        },
+        onUseCloud: () => resolve(callAiProxy_(AI_PROXY_URL, { text: prompt }).then(r => r.json())),
         onCancel: () => reject(new Error('사용자가 취소했습니다.')),
       });
     });
@@ -7653,11 +7735,16 @@ function withRateLimitRetry_(callFn, statusEl, label, retriesLeft) {
 }
 function runCutAiImport_() {
   const files = Array.from(document.getElementById('cai-files').files || []);
-  if (!files.length) { showToast('스토리보드 파일을 선택하세요'); return; }
   const projectId = document.getElementById('cai-project').value;
   const context = document.getElementById('cai-context').value.trim();
   const statusEl = document.getElementById('cai-status');
   const startBtn = document.getElementById('cai-start-btn');
+  // 파일도 없고 키워드/제작의도도 비어있으면 AI가 뭘 만들어야 할지 근거가 아예 없으니 그때만 막는다.
+  // 파일 없이 키워드만 있는 경우는 "처음부터 새로 기획" 경로로 정상 진행한다.
+  if (!files.length && !context) {
+    showToast('스토리보드 파일을 선택하거나, 키워드/제작의도를 입력해주세요');
+    return;
+  }
   startBtn.disabled = true;
   const startedAt = new Date();
   let importedCount = 0;
@@ -7673,6 +7760,24 @@ function runCutAiImport_() {
       importedCount++;
     });
   };
+  // 파일을 하나도 안 올렸으면(키워드/제작의도만 있는 경우) 스토리보드를 나누는 게 아니라 처음부터
+  // 텍스트만으로 새로 기획하는 별도 경로로 처리하고 끝낸다(아래 파일별 runSequential 흐름은 타지 않음).
+  if (!files.length) {
+    statusEl.textContent = `시작: ${startedAt.toLocaleTimeString('ko-KR')} · 키워드/제작의도만으로 스토리보드를 새로 기획하는 중…`;
+    withRateLimitRetry_(() => callTextAiWithFallbackChoice_(buildCutTextGenPrompt_(context)), statusEl, '스토리보드 기획')
+      .then(data => {
+        if (data.error) throw new Error(data.error);
+        appendCuts(parseCutAiReply_(data.reply), 'ai');
+        renderCuts(); queueAutoSave();
+      })
+      .catch(err => { statusEl.textContent += `\n⚠️ 스토리보드 기획 실패: ${err.message}`; })
+      .then(() => {
+        startBtn.disabled = false;
+        statusEl.textContent = `✅ 완료 (${startedAt.toLocaleTimeString('ko-KR')} 시작) — 컷 ${importedCount}개를 새로 기획했습니다. 표에서 내용을 확인·수정해주세요.` + (statusEl.textContent.indexOf('⚠️') !== -1 ? '\n' + statusEl.textContent.split('\n').filter(l => l.indexOf('⚠️') !== -1).join('\n') : '');
+        if (importedCount > 0) { showToast(`컷 ${importedCount}개를 새로 기획했습니다`); renderCuts(); }
+      });
+    return;
+  }
   // 순서대로(하나씩) 처리 — 시작 시각/진행률을 계속 갱신해서 화면에 보여준다.
   const runSequential = (items, handler) => items.reduce((chain, item, idx) => chain.then(() => {
     statusEl.textContent = `시작: ${startedAt.toLocaleTimeString('ko-KR')} · 진행 중 ${idx + 1}/${items.length} (${Math.round((idx / items.length) * 100)}%)…`;
