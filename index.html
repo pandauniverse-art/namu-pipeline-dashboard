@@ -243,6 +243,13 @@
   .lightbox-caption { color: #fff; font-size: 13px; margin-top: 12px; text-align: center; max-width: 80vw; }
   .lightbox-close-btn { position: absolute; top: 16px; right: 20px; background: rgba(255,255,255,0.12); color: #fff; border: none; border-radius: 50%; width: 36px; height: 36px; font-size: 16px; cursor: pointer; display: flex; align-items: center; justify-content: center; }
   .lightbox-close-btn:hover { background: rgba(255,255,255,0.22); }
+  /* 영상 확대재생(라이트박스): 자료 카드의 작은 칸 대신 화면 중앙의 큰 화면으로 유튜브/구글 드라이브 영상을 재생 */
+  .lightbox-video-wrap { width: min(1100px, 92vw); aspect-ratio: 16 / 9; background: #000; border-radius: 6px; overflow: hidden; box-shadow: 0 8px 40px rgba(0,0,0,0.5); cursor: default; }
+  .lightbox-video-wrap iframe, .lightbox-video-wrap video { width: 100%; height: 100%; border: 0; display: block; }
+  /* 자료 카드의 영상 썸네일(유튜브 미리보기 이미지/캡처한 대표 프레임) 위에 올려서 "재생 가능"을 보여주는 재생 아이콘 */
+  .video-thumb-wrap { position: relative; overflow: hidden; }
+  .video-thumb-wrap img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .video-play-overlay { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: 32px; color: #fff; text-shadow: 0 1px 6px rgba(0,0,0,0.6); background: rgba(0,0,0,0.15); pointer-events: none; }
   /* ---------- 자료 보관함 ---------- */
   .asset-card { background: var(--surface-1); border: 1px solid var(--border); border-radius: 8px; overflow: hidden; display: flex; flex-direction: column; }
   .asset-thumb { width: 100%; aspect-ratio: 1 / 1; object-fit: cover; background: var(--grid); display: block; cursor: pointer; }
@@ -1050,6 +1057,33 @@
     </div>
   </div>
 </div>
+<!-- 영상 자료의 대표 썸네일을 다시 설정하는 모달: 구글 드라이브에 올라간 영상에서 원하는 장면을 다시 캡처하거나, 이미지 파일을 직접 올려서 교체할 수 있다 -->
+<div class="modal-backdrop" id="videoThumbModalBackdrop">
+  <div class="modal" style="max-width:480px;">
+    <h2>썸네일 변경 — <span id="vtm-asset-name"></span></h2>
+    <div style="font-size:12px; color:var(--text-muted); margin-bottom:10px;">영상에서 원하는 장면을 다시 캡처하거나, 이미지 파일을 직접 올려서 썸네일로 쓸 수 있습니다.</div>
+    <div id="vtm-preview-wrap" style="width:100%; aspect-ratio:16/9; background:var(--grid); border-radius:6px; overflow:hidden; display:flex; align-items:center; justify-content:center; margin-bottom:10px;">
+      <span id="vtm-preview-placeholder" style="font-size:12px; color:var(--text-muted);">미리보기 없음</span>
+      <img id="vtm-preview-img" src="" style="width:100%; height:100%; object-fit:cover; display:none;">
+    </div>
+    <div style="display:flex; flex-direction:column; gap:8px;">
+      <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+        <label style="white-space:nowrap; font-size:12px;">장면 시점(초)</label>
+        <input type="number" id="vtm-seek" value="1" min="0" step="0.5" style="width:80px;">
+        <button type="button" onclick="captureVideoThumbAtSeek_()">🎬 이 시점으로 캡처</button>
+      </div>
+      <div id="vtm-capture-status" style="font-size:11px; color:var(--text-muted);"></div>
+      <div style="border-top:1px solid var(--border); padding-top:8px;">
+        <label style="font-size:12px;">또는 이미지 파일 직접 업로드</label><br>
+        <input type="file" id="vtm-file" accept="image/*" onchange="handleVideoThumbFileUpload_()">
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button onclick="closeVideoThumbModal_()">취소</button>
+      <button class="primary" onclick="saveVideoThumbFromModal_()">저장</button>
+    </div>
+  </div>
+</div>
 <!-- 프롬프트 ↔ 이미지 연결 피커: 프롬프트 카드에서 "이미지 선택"을 누르면 이미지 라이브러리를 그리드로 보고 클릭해서 연결/해제 -->
 <div class="modal-backdrop" id="promptImagePickerBackdrop">
   <div class="modal" style="max-width:760px;">
@@ -1138,6 +1172,12 @@
   <button type="button" class="lightbox-close-btn" onclick="closeImageLightbox_()" aria-label="닫기">✕</button>
   <img id="imageLightboxImg" class="lightbox-img" src="" alt="">
   <div id="imageLightboxCaption" class="lightbox-caption"></div>
+</div>
+<!-- ---------- 영상 확대재생(라이트박스): 자료 보관함의 유튜브/구글 드라이브 영상을 클릭하면 작은 칸이나 새 탭 대신 화면 중앙의 큰 화면에서 바로 재생 ---------- -->
+<div class="lightbox-backdrop" id="videoLightboxBackdrop" onclick="if (event.target === this) closeVideoLightbox_()">
+  <button type="button" class="lightbox-close-btn" onclick="closeVideoLightbox_()" aria-label="닫기">✕</button>
+  <div class="lightbox-video-wrap" id="videoLightboxWrap"></div>
+  <div id="videoLightboxCaption" class="lightbox-caption"></div>
 </div>
 <!-- ---------- 첫 로그인 온보딩 투어 (스킵 가능, localStorage로 재노출 방지) ---------- -->
 <div class="onboarding-backdrop" id="onboardingBackdrop">
@@ -4513,6 +4553,49 @@ function resizeImageFile_(file) {
     reader.readAsDataURL(file);
   });
 }
+// 영상 파일에서 대표 프레임(썸네일) 하나를 뽑아 리사이즈된 JPEG data URL로 돌려준다. 목록에 썸네일로
+// 보여주는 것과, 이미지와 똑같은 AI 분석기(analyzeImageWithAi_)에 넣어 이름/태그/설명을 채우는 것,
+// 두 곳에 공통으로 쓴다. 서버나 별도 라이브러리 없이 <video>+<canvas>만으로 브라우저에서 끝낸다.
+const VIDEO_THUMB_MAX_W_ = 480;
+// 리사이즈했는데도 유난히 큰 프레임(예: 프레임 안에 텍스트/디테일이 많아 JPEG 압축이 잘 안 먹는 경우)이면
+// Firestore 문서 용량 안전선을 위해 썸네일 저장 자체를 포기한다(AI 분석에는 여전히 써도 됨).
+const VIDEO_THUMB_DATAURL_MAX_LEN_ = 500000;
+// 영상 프레임을 이미지 분석기에 넣을 때, "이건 사진이 아니라 영상의 한 장면"이라는 걸 미리 알려줘서
+// 엉뚱하게 "사진" 취급하며 분석하지 않게 한다.
+const VIDEO_FRAME_AI_CONTEXT_ = '참고: 이 이미지는 정지 사진이 아니라, 업로드된 영상 파일에서 자동으로 캡처한 대표 프레임(한 장면)이야. 영상 자체의 실제 내용을 반영해서 분석해줘.';
+function extractVideoThumbnail_(file, seekTime) {
+  return new Promise((resolve, reject) => {
+    const objectUrl = URL.createObjectURL(file);
+    const video = document.createElement('video');
+    video.preload = 'metadata';
+    video.muted = true;
+    video.playsInline = true;
+    let settled = false;
+    const cleanup = () => URL.revokeObjectURL(objectUrl);
+    const fail = (msg) => { if (settled) return; settled = true; cleanup(); reject(new Error(msg)); };
+    const succeed = (dataUrl) => { if (settled) return; settled = true; cleanup(); resolve(dataUrl); };
+    video.onloadedmetadata = () => {
+      if (!video.duration || !isFinite(video.duration)) { fail('영상 길이를 확인하지 못했습니다.'); return; }
+      // 맨 첫 프레임은 검은 화면/페이드인인 경우가 많아서, 1초 또는 영상 길이의 10% 중 더 짧은 쪽으로 살짝 뒤로 뺀다.
+      video.currentTime = Math.min(seekTime != null ? seekTime : 1, video.duration * 0.1);
+    };
+    video.onseeked = () => {
+      try {
+        const vw = video.videoWidth || VIDEO_THUMB_MAX_W_;
+        const vh = video.videoHeight || VIDEO_THUMB_MAX_W_;
+        const scale = Math.min(1, VIDEO_THUMB_MAX_W_ / vw);
+        const w = Math.max(1, Math.round(vw * scale));
+        const h = Math.max(1, Math.round(vh * scale));
+        const canvas = document.createElement('canvas');
+        canvas.width = w; canvas.height = h;
+        canvas.getContext('2d').drawImage(video, 0, 0, w, h);
+        succeed(canvas.toDataURL('image/jpeg', 0.8));
+      } catch (e) { fail('영상 프레임을 이미지로 변환하지 못했습니다: ' + e.message); }
+    };
+    video.onerror = () => fail('영상 파일을 읽지 못했습니다(형식을 지원하지 않을 수 있음).');
+    video.src = objectUrl;
+  });
+}
 // 압축된 이미지를 GitHub 저장소에 커밋해서 jsDelivr CDN 주소를 돌려주는 Vercel 프록시를 호출한다.
 // 프록시가 응답하지 않거나(네트워크 오류, 서버에 GITHUB_TOKEN 미설정 등) 실패하면 null을 돌려주며
 // (예외를 던지지 않음), 호출하는 쪽에서 dataUrl을 Firestore에 직접 저장하는 방식으로 자동 대체한다.
@@ -4696,11 +4779,13 @@ function buildTagTaxonomyPromptHint_() {
   return lines.join('\n');
 }
 // 이미지를 AI(비전 모델)에게 보내서 이름/태그/한줄요약/설명을 한 번에 JSON으로 받아온다.
-// 이미지 업로드(모달)와 AI 채팅 붙여넣기 두 경로에서 공통으로 쓰는 헬퍼.
+// 이미지 업로드(모달)와 AI 채팅 붙여넣기, 영상 대표 프레임(썸네일) 분석까지 세 경로에서 공통으로 쓰는 헬퍼.
 // 모델이 JSON 형식을 안 지켜도 최대한 안전하게 폴백하도록(빈 값으로) 처리한다.
-function analyzeImageWithAi_(dataUrl) {
+// contextNote: 이 이미지가 실제로는 무엇의 일부인지 모델에게 미리 알려주는 한 줄(예: 영상의 대표 프레임이라는 것) — 생략 가능.
+function analyzeImageWithAi_(dataUrl, contextNote) {
   const taxonomyHint = buildTagTaxonomyPromptHint_();
-  const prompt = '이 이미지를 우리 팀 자료 보관함에 정리해서 등록하려고 해. 다음 JSON 형식으로만, 다른 설명 없이 답해줘:\n' +
+  const contextLine = contextNote ? (contextNote + '\n') : '';
+  const prompt = contextLine + '이 이미지를 우리 팀 자료 보관함에 정리해서 등록하려고 해. 다음 JSON 형식으로만, 다른 설명 없이 답해줘:\n' +
     '{"name": "20자 내외 한국어 이름", "tags": [{"category": "대표 키워드", "name": "하위 키워드"}], "summary": "25자 내외 한국어 한 줄 요약", "description": "40자 내외 한국어 설명(구도·스타일·용도 등 참고 메모)"}\n' +
     '태그(tags)의 각 항목은 아래 [현재 대표 키워드/하위 키워드 목록]에 있는 대표 키워드 중 하나를 category로 골라줘. ' +
     '이미 목록에 있는 하위 키워드와 뜻이 같으면 새로 만들지 말고 그 이름을 그대로 재사용해줘(예: "전신"이 이미 있으면 "전신샷"을 새로 만들지 마). ' +
@@ -4863,28 +4948,48 @@ function registerAiChatVideoAsAsset_(file) {
   renderAiChat();
   scrollAiChatToBottom_();
   setVideoUploadBubble_(`"${file.name}" 업로드 준비 중…`);
+  const fallbackName = file.name.replace(/\.[^.]+$/, '') || `영상 (업로드 ${new Date().toLocaleString('ko-KR')})`;
   uploadVideoFileToDrive_(file, pct => setVideoUploadBubble_(`"${file.name}" 업로드 중… ${pct}%`))
     .then(result => {
-      setVideoUploadBubble_(null);
-      aiChatVideoUploading_ = false;
-      if (attachBtn) attachBtn.disabled = false;
       if (!result.ok) {
+        setVideoUploadBubble_(null);
+        aiChatVideoUploading_ = false;
+        if (attachBtn) attachBtn.disabled = false;
         aiChatHistory.push({ role: 'assistant', content: `⚠️ 영상 업로드에 실패했습니다: ${result.error}` });
         renderAiChat();
         scrollAiChatToBottom_();
         return;
       }
-      // 파일 업로드로 받은 영상은(URL 직접 붙여넣기와 달리) 사용자가 이름/설명을 따로 안 적기 때문에,
-      // 원본 파일명(확장자 제외)을 이름으로 쓴다 — 이미지 쪽의 "이름을 못 받으면 타임스탬프로 대체" 규칙과 같은 취지.
-      const name = file.name.replace(/\.[^.]+$/, '') || `영상 (업로드 ${new Date().toLocaleString('ko-KR')})`;
-      const asset = { id: genId_('a'), type: 'video', name, tags: [], projects: [], url: result.url, description: '', updatedAt: Date.now() };
-      assets.push(asset);
-      renderAssets();
-      queueAutoSave();
-      logActivity_(`🤖 AI 채팅으로 영상 자료 "${name}"을(를) 구글 드라이브에 업로드/등록함`);
-      aiChatHistory.push({ role: 'assistant', content: `✅ 자료 보관함에 영상으로 등록했습니다: "${name}" (구글 드라이브에 저장됨)` });
-      renderAiChat();
-      scrollAiChatToBottom_();
+      // 업로드가 끝나면, 영상에서 대표 장면(프레임) 하나를 뽑아 썸네일로 쓰고, 이미지와 똑같은 AI
+      // 분석기에 넣어서 이름/태그/설명까지 자동으로 채운다. 프레임 추출이나 분석이 실패해도(예: 브라우저가
+      // 이 영상 코덱을 못 읽는 경우) 업로드 자체는 이미 성공했으니, 파일명 기반 이름으로 조용히 계속 진행한다.
+      setVideoUploadBubble_(`"${file.name}" 대표 장면 분석 중…`);
+      return extractVideoThumbnail_(file)
+        .catch(err => { console.warn('영상 썸네일 추출 실패:', err); return null; })
+        .then(thumbDataUrl => {
+          if (!thumbDataUrl) return { thumbDataUrl: null, analysis: null };
+          return analyzeImageWithAi_(thumbDataUrl, VIDEO_FRAME_AI_CONTEXT_)
+            .catch(err => { console.warn('영상 프레임 AI 분석 실패:', err); return null; })
+            .then(analysis => ({ thumbDataUrl, analysis }));
+        })
+        .then(({ thumbDataUrl, analysis }) => {
+          setVideoUploadBubble_(null);
+          aiChatVideoUploading_ = false;
+          if (attachBtn) attachBtn.disabled = false;
+          const name = (analysis && analysis.name) || fallbackName;
+          const tags = (analysis && analysis.tags) || [];
+          const description = (analysis && analysis.description) || '';
+          const aiSummary = (analysis && analysis.summary) || '';
+          const safeThumb = (thumbDataUrl && thumbDataUrl.length <= VIDEO_THUMB_DATAURL_MAX_LEN_) ? thumbDataUrl : '';
+          const asset = { id: genId_('a'), type: 'video', name, tags, projects: [], url: result.url, description, aiSummary, thumbDataUrl: safeThumb, updatedAt: Date.now() };
+          assets.push(asset);
+          renderAssets();
+          queueAutoSave();
+          logActivity_(`🤖 AI 채팅으로 영상 자료 "${name}"을(를) 구글 드라이브에 업로드/등록함`);
+          aiChatHistory.push({ role: 'assistant', content: `✅ 자료 보관함에 영상으로 등록했습니다: "${name}"${tags.length ? ' (태그: ' + tags.join(', ') + ')' : ''} (구글 드라이브에 저장됨)` });
+          renderAiChat();
+          scrollAiChatToBottom_();
+        });
     });
 }
 // ---------- 태그 카테고리 피커 (대표 키워드 안에서 하위 키워드 선택 + 새 태그 직접 추가) ----------
@@ -4973,6 +5078,89 @@ function saveAssetTagEdit_() {
   renderAssets();
   closeAssetTagEditModal_();
 }
+// ---------- 영상 썸네일(대표 장면) 재설정 모달: 이미 등록된 영상에서 다른 장면으로 다시 캡처하거나, 이미지 파일을 직접 올려서 교체 ----------
+let videoThumbModalTargetId_ = null;
+let videoThumbModalPreviewDataUrl_ = ''; // "저장"을 누르기 전까지는 미리보기로만 들고 있는 값(취소하면 asset은 그대로 유지됨)
+function openVideoThumbModal_(assetId) {
+  const a = assets.find(x => x.id === assetId);
+  if (!a) return;
+  videoThumbModalTargetId_ = assetId;
+  document.getElementById('vtm-asset-name').textContent = a.name || '(이름 없음)';
+  document.getElementById('vtm-seek').value = 1;
+  document.getElementById('vtm-file').value = '';
+  document.getElementById('vtm-capture-status').textContent = '';
+  setVideoThumbPreview_(a.thumbDataUrl || '');
+  document.getElementById('videoThumbModalBackdrop').classList.add('active');
+}
+function closeVideoThumbModal_() {
+  document.getElementById('videoThumbModalBackdrop').classList.remove('active');
+  videoThumbModalTargetId_ = null;
+  applyPendingRemoteIfAny();
+}
+function setVideoThumbPreview_(dataUrl) {
+  videoThumbModalPreviewDataUrl_ = dataUrl || '';
+  const img = document.getElementById('vtm-preview-img');
+  const placeholder = document.getElementById('vtm-preview-placeholder');
+  if (dataUrl) {
+    img.src = dataUrl;
+    img.style.display = 'block';
+    placeholder.style.display = 'none';
+  } else {
+    img.src = '';
+    img.style.display = 'none';
+    placeholder.style.display = 'block';
+  }
+}
+// 이미 구글 드라이브에 올라간 영상 파일을 drive.file 권한 범위 안에서 다시 내려받아(이 앱이 올린 파일이라 가능함)
+// 원하는 시점(초)의 프레임을 다시 캡처한다. 영상 용량이 크면 재다운로드에 시간이 걸릴 수 있어 진행 상태를 보여준다.
+function captureVideoThumbAtSeek_() {
+  const a = assets.find(x => x.id === videoThumbModalTargetId_);
+  if (!a) return;
+  const fileId = driveFileIdFromUrl_(a.url);
+  if (!fileId) { showToast('구글 드라이브에 올라간 영상에서만 다시 캡처할 수 있습니다'); return; }
+  const seekTime = parseFloat(document.getElementById('vtm-seek').value) || 0;
+  const statusEl = document.getElementById('vtm-capture-status');
+  statusEl.textContent = '영상을 다시 불러오는 중…';
+  getDriveAccessToken_()
+    .then(token => fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`, { headers: { Authorization: 'Bearer ' + token } }))
+    .then(r => { if (!r.ok) throw new Error(`영상을 불러오지 못했습니다 (${r.status})`); return r.blob(); })
+    .then(blob => {
+      statusEl.textContent = '해당 시점의 장면을 캡처하는 중…';
+      return extractVideoThumbnail_(blob, seekTime);
+    })
+    .then(dataUrl => {
+      statusEl.textContent = '✅ 캡처 완료 — 저장을 눌러 적용하세요';
+      setVideoThumbPreview_(dataUrl);
+    })
+    .catch(err => { statusEl.textContent = '⚠️ 캡처 실패: ' + err.message; });
+}
+// 영상 재다운로드 대신, 준비해둔 이미지 파일을 직접 올려서 썸네일로 쓰고 싶을 때 쓰는 경로.
+function handleVideoThumbFileUpload_() {
+  const fileInput = document.getElementById('vtm-file');
+  const file = fileInput.files[0];
+  if (!file) return;
+  const statusEl = document.getElementById('vtm-capture-status');
+  statusEl.textContent = '이미지를 불러오는 중…';
+  resizeImageFile_(file).then(({ dataUrl }) => {
+    statusEl.textContent = '✅ 이미지 준비 완료 — 저장을 눌러 적용하세요';
+    setVideoThumbPreview_(dataUrl);
+  }).catch(err => { statusEl.textContent = '⚠️ 이미지를 불러오지 못했습니다: ' + err.message; });
+}
+function saveVideoThumbFromModal_() {
+  const a = assets.find(x => x.id === videoThumbModalTargetId_);
+  if (!a) return;
+  const dataUrl = videoThumbModalPreviewDataUrl_;
+  if (dataUrl && dataUrl.length > VIDEO_THUMB_DATAURL_MAX_LEN_) {
+    showToast('썸네일 용량이 너무 커서 저장할 수 없습니다. 다른 장면이나 더 작은 이미지로 시도해주세요.');
+    return;
+  }
+  a.thumbDataUrl = dataUrl;
+  a.updatedAt = Date.now();
+  renderAssets();
+  queueAutoSave();
+  closeVideoThumbModal_();
+  showToast('썸네일을 변경했습니다');
+}
 function openAssetModal() {
   pastedImageAnalysisCache_ = null; // 이전에 열었을 때 붙여넣어 분석해둔 결과는 새로 열면 더 이상 유효하지 않음
   assetModalSelectedTags_ = [];
@@ -4984,6 +5172,7 @@ function openAssetModal() {
   document.getElementById('as-videourl').disabled = false;
   document.getElementById('as-video-upload-progress').style.display = 'none';
   videoUploadInProgress_ = false;
+  pendingVideoThumbDataUrl_ = '';
   document.getElementById('as-prompttext').value = '';
   document.getElementById('as-description').value = '';
   document.getElementById('as-ai-summarize').checked = true;
@@ -5007,6 +5196,9 @@ function toggleAssetTypeFields() {
 // 끝나면 링크 입력란에 업로드된 드라이브 링크를 자동으로 채워넣어서, 그 아래 "저장" 로직은
 // 기존에 링크를 직접 붙여넣었을 때와 완전히 똑같이 동작한다(별도 분기 필요 없음).
 let videoUploadInProgress_ = false;
+// 파일 업로드로 영상을 올렸을 때 미리 뽑아둔 대표 프레임(썸네일) data URL. "저장" 버튼을 누르는 시점에
+// saveAssetFromModal()이 이 값을 asset.thumbDataUrl로 그대로 넣는다 — 링크만 붙여넣은 경우엔 비어있는 채로 둔다.
+let pendingVideoThumbDataUrl_ = '';
 function handleVideoFileSelected_() {
   const fileInput = document.getElementById('as-videofile');
   const file = fileInput.files[0];
@@ -5014,6 +5206,7 @@ function handleVideoFileSelected_() {
   const progressEl = document.getElementById('as-video-upload-progress');
   const urlInput = document.getElementById('as-videourl');
   videoUploadInProgress_ = true;
+  pendingVideoThumbDataUrl_ = '';
   urlInput.value = '';
   urlInput.disabled = true;
   progressEl.style.display = 'block';
@@ -5028,7 +5221,15 @@ function handleVideoFileSelected_() {
         return;
       }
       urlInput.value = result.url;
-      progressEl.textContent = `✅ "${file.name}" 업로드 완료 (아래 저장 버튼을 눌러 자료로 등록하세요)`;
+      progressEl.textContent = `✅ "${file.name}" 업로드 완료 — 대표 장면 캡처 중…`;
+      // 업로드 자체는 이미 끝났으니, 목록 썸네일/AI 분석용 대표 프레임은 이어서 백그라운드로 뽑는다
+      // (실패해도 업로드 자체는 이미 유효하므로 저장은 그대로 진행할 수 있게 한다).
+      extractVideoThumbnail_(file)
+        .then(thumbDataUrl => {
+          pendingVideoThumbDataUrl_ = (thumbDataUrl && thumbDataUrl.length <= VIDEO_THUMB_DATAURL_MAX_LEN_) ? thumbDataUrl : '';
+        })
+        .catch(err => { console.warn('영상 썸네일 추출 실패:', err); })
+        .then(() => { progressEl.textContent = `✅ "${file.name}" 업로드 완료 (아래 저장 버튼을 눌러 자료로 등록하세요)`; });
     });
 }
 function saveAssetFromModal() {
@@ -5045,7 +5246,12 @@ function saveAssetFromModal() {
     // 같은 링크가 이미 등록되어 있으면 실수로 두 번 등록하는 걸 막기 위해 한 번 확인한다.
     const dupVideo = assets.find(a => a.type === 'video' && (a.url || '').trim().toLowerCase() === url.toLowerCase());
     if (dupVideo && !confirm(`이미 같은 영상 링크가 "${dupVideo.name}"(으)로 등록되어 있습니다. 그래도 추가할까요?`)) return;
-    const asset = {id: genId_('a'), type: 'video', name: name || url, tags, projects: linkedProjects, url, description, updatedAt: Date.now()};
+    // 파일 업로드로 방금 뽑아둔 대표 프레임(썸네일)이 있으면 같이 저장한다 — 링크만 붙여넣은 경우엔 비어있음.
+    const thumbDataUrl = pendingVideoThumbDataUrl_;
+    // 이미지 자료와 같은 방식: 이름을 직접 안 적었고 AI 분석을 켜뒀고 썸네일도 있으면, 일단 비워둬서
+    // 아래 generateAssetAiSummary_() → applyAiVideoFrameAnalysis_()가 AI 결과로 채우게 한다.
+    const assetName = name || ((wantAiSummary && thumbDataUrl) ? '' : url);
+    const asset = {id: genId_('a'), type: 'video', name: assetName, tags, projects: linkedProjects, url, description, thumbDataUrl, updatedAt: Date.now()};
     assets.push(asset);
     finishAssetSave_();
     if (wantAiSummary) generateAssetAiSummary_(asset);
@@ -5183,6 +5389,34 @@ function applyAiImageAnalysis_(asset, fallbackName) {
     queueAutoSave();
   });
 }
+// 영상 자료 등록(모달 저장 경로)에서 "AI로 요약 생성"을 켰을 때 쓰는 함수 — AI 채팅 첨부 경로
+// (registerAiChatVideoAsAsset_)와 똑같이, 업로드 시점에 뽑아둔 대표 프레임(썸네일)을 이미지 분석기에
+// 그대로 넣어 이름/태그/설명까지 채운다. applyAiImageAnalysis_()와 동일한 원칙: 이미 값이 있는 필드는
+// 덮어쓰지 않고 빈 항목만 채운다.
+function applyAiVideoFrameAnalysis_(asset, fallbackName) {
+  asset.aiSummary = 'AI 분석 중…';
+  renderAssets();
+  return analyzeImageWithAi_(asset.thumbDataUrl, VIDEO_FRAME_AI_CONTEXT_).then(result => {
+    if (!assets.includes(asset)) return; // 그 사이 삭제됐으면 무시
+    asset.aiSummary = result.summary;
+    if (!asset.name || !asset.name.trim()) asset.name = result.name || fallbackName || '';
+    if (!(asset.tags && asset.tags.length) && result.tags.length) {
+      result.tags.forEach(t => assignTagCategory_(t)); // 카테고리 모르는 새 태그는 일단 "미분류"로 등록
+      asset.tags = result.tags;
+    }
+    if (!(asset.description && asset.description.trim()) && result.description) asset.description = result.description;
+    asset.updatedAt = Date.now();
+    renderAssets();
+    queueAutoSave();
+  }).catch(err => {
+    if (!assets.includes(asset)) return;
+    if (!asset.name || !asset.name.trim()) asset.name = fallbackName || asset.name;
+    asset.aiSummary = '분석 실패: ' + err.message;
+    asset.updatedAt = Date.now();
+    renderAssets();
+    queueAutoSave();
+  });
+}
 // 프롬프트 텍스트를 AI에게 보내서 "언제/어떤 상황에 쓰는 프롬프트인지"를 해석하고 이름/태그/요약/설명을
 // 한 번에 JSON으로 받아온다. 단순 내용 요약이 아니라 용도(사용 시점/상황) 중심으로 정리하는 것이 핵심.
 // 프롬프트 등록 모달과 AI 채팅(add_asset/update_asset, type=prompt) 두 경로에서 공통으로 쓰는 헬퍼.
@@ -5249,6 +5483,12 @@ function generateAssetAiSummary_(asset) {
   }
   if (asset.type === 'prompt') {
     applyAiPromptAnalysis_(asset, asset.name);
+    return;
+  }
+  // 영상인데 대표 프레임(썸네일)이 이미 있으면(업로드 시 자동 캡처됐거나, "썸네일 변경"으로 직접 설정한 경우)
+  // 유튜브 제목/설명 기반의 옛날 방식 대신, 이미지와 똑같은 비전 분석기로 실제 장면을 보고 이름/태그/설명까지 채운다.
+  if (asset.type === 'video' && asset.thumbDataUrl) {
+    applyAiVideoFrameAnalysis_(asset, asset.name);
     return;
   }
   asset.aiSummary = 'AI 요약 생성 중…';
@@ -5338,6 +5578,17 @@ function copyAssetPromptText_(id) {
     } catch (e) { fail(); }
   }
 }
+// 자료 카드의 "AI 요약 생성" 버튼 문구를 자료 종류/상태에 맞게 골라준다. 영상인데 대표 프레임(썸네일)이
+// 있으면 이미지와 동일하게 실제 장면을 보고 분석하므로 이미지와 같은 문구를 쓰고, 썸네일이 없는 링크
+// 자료(유튜브 제외)는 여전히 설명/메모 기반 요약만 가능하다는 걸 알려준다.
+function assetAiSummaryButtonLabel_(a) {
+  if (a.type === 'image') return '🤖 AI로 이름·태그·요약 자동 정리';
+  if (a.type === 'video') {
+    if (a.thumbDataUrl) return '🤖 AI로 이름·태그·요약 자동 정리';
+    if (!youtubeVideoId_(a.url)) return '🤖 AI 요약 생성 (설명/메모 기반)';
+  }
+  return '🤖 AI 요약 생성';
+}
 function youtubeVideoId_(url) {
   if (!url) return null;
   const m = String(url).match(/(?:youtube\.com\/(?:watch\?v=|shorts\/|embed\/)|youtu\.be\/)([A-Za-z0-9_-]{11})/);
@@ -5358,8 +5609,41 @@ function closeImageLightbox_() {
   document.getElementById('imageLightboxImg').src = '';
 }
 document.addEventListener('keydown', e => {
-  if (e.key === 'Escape' && document.getElementById('imageLightboxBackdrop').classList.contains('active')) closeImageLightbox_();
+  if (e.key !== 'Escape') return;
+  if (document.getElementById('imageLightboxBackdrop').classList.contains('active')) closeImageLightbox_();
+  if (document.getElementById('videoLightboxBackdrop').classList.contains('active')) closeVideoLightbox_();
 });
+// 구글 드라이브 링크(.../file/d/FILEID/view 또는 ?id=FILEID 형태)에서 파일 ID만 뽑아낸다.
+// 영상 재생용 미리보기(iframe) 주소를 만들거나, 썸네일 재캡처를 위해 원본 파일을 다시 내려받을 때 공통으로 쓴다.
+function driveFileIdFromUrl_(url) {
+  if (!url) return null;
+  const m = String(url).match(/\/file\/d\/([A-Za-z0-9_-]+)/) || String(url).match(/[?&]id=([A-Za-z0-9_-]+)/);
+  return m ? m[1] : null;
+}
+// 영상(유튜브/구글 드라이브)을 클릭하면 자료 카드의 작은 칸이나 드라이브 새 탭 대신, 이미지 라이트박스와
+// 똑같은 방식으로 화면 중앙의 큰 화면에서 바로 재생한다. 유튜브는 embed로, 구글 드라이브 영상은 드라이브의
+// 미리보기(preview) 페이지를 그대로 큰 화면에 띄운다(같은 브라우저에 그 구글 계정으로 로그인만 되어 있으면 별도 설정 없이 재생됨).
+function openVideoLightbox_(assetId) {
+  const a = assets.find(x => x.id === assetId);
+  if (!a || !a.url) return;
+  const wrap = document.getElementById('videoLightboxWrap');
+  const ytId = youtubeVideoId_(a.url);
+  const driveId = driveFileIdFromUrl_(a.url);
+  if (ytId) {
+    wrap.innerHTML = `<iframe src="https://www.youtube-nocookie.com/embed/${ytId}?autoplay=1" title="${escapeHtml_(a.name||'유튜브 영상')}" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>`;
+  } else if (driveId) {
+    wrap.innerHTML = `<iframe src="https://drive.google.com/file/d/${driveId}/preview" allow="autoplay" allowfullscreen></iframe>`;
+  } else {
+    wrap.innerHTML = `<video src="${escapeHtml_(a.url)}" controls autoplay></video>`;
+  }
+  document.getElementById('videoLightboxCaption').textContent = a.name || '';
+  document.getElementById('videoLightboxBackdrop').classList.add('active');
+}
+function closeVideoLightbox_() {
+  document.getElementById('videoLightboxBackdrop').classList.remove('active');
+  // 재생을 확실히 멈추기 위해 iframe/video 자체를 통째로 지운다(그냥 숨기기만 하면 소리가 계속 나옴).
+  document.getElementById('videoLightboxWrap').innerHTML = '';
+}
 function assetThumbHTML_(a) {
   if (a.type === 'image') {
     // url(GitHub 저장소 + jsDelivr CDN) 우선, 옛날에 저장된 자료는 dataUrl로 폴백. loading="lazy"라서 실제 화면에 스크롤되어 보일 때만
@@ -5368,11 +5652,18 @@ function assetThumbHTML_(a) {
     return `<img class="asset-thumb" src="${escapeHtml_(src)}" loading="lazy" onclick="openImageLightbox_('${jsStrAttr_(src)}', '${jsStrAttr_(a.name)}')">`;
   }
   if (a.type === 'video') {
+    // 카드 안에서 직접 재생(작은 iframe 임베드)하지 않고, 정지된 미리보기 이미지 + 재생 아이콘만 보여준 뒤
+    // 클릭하면 openVideoLightbox_()로 화면 중앙의 큰 화면에서 재생한다 — 목록을 가볍게 유지하고, 유튜브/구글
+    // 드라이브 구분 없이 항상 같은 방식(큰 화면 재생)으로 보이게 하기 위함.
     const ytId = youtubeVideoId_(a.url);
     if (ytId) {
-      return `<iframe class="asset-thumb" style="border:0;" src="https://www.youtube-nocookie.com/embed/${ytId}" title="${escapeHtml_(a.name||'유튜브 영상')}" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen loading="lazy"></iframe>`;
+      const thumbSrc = `https://img.youtube.com/vi/${ytId}/hqdefault.jpg`;
+      return `<div class="asset-thumb video-thumb-wrap" onclick="openVideoLightbox_('${a.id}')"><img src="${thumbSrc}" loading="lazy" alt="${escapeHtml_(a.name||'유튜브 영상')}"><div class="video-play-overlay">▶</div></div>`;
     }
-    return `<div class="asset-thumb" style="display:flex; align-items:center; justify-content:center; font-size:28px; cursor:pointer;" onclick="window.open('${jsStrAttr_(a.url)}', '_blank')">🎬</div>`;
+    if (a.thumbDataUrl) {
+      return `<div class="asset-thumb video-thumb-wrap" onclick="openVideoLightbox_('${a.id}')"><img src="${a.thumbDataUrl}" loading="lazy" alt="${escapeHtml_(a.name||'영상')}"><div class="video-play-overlay">▶</div></div>`;
+    }
+    return `<div class="asset-thumb" style="display:flex; align-items:center; justify-content:center; font-size:28px; cursor:pointer;" onclick="openVideoLightbox_('${a.id}')">🎬</div>`;
   }
   return `<div class="asset-thumb" style="display:flex; align-items:flex-start; padding:10px; font-size:11px; white-space:pre-wrap; overflow:hidden; color:var(--text-secondary); font-family:monospace;">${escapeHtml_((a.text||'').slice(0,160))}</div>`;
 }
@@ -5694,7 +5985,7 @@ function renderAssets() {
       ${assetThumbHTML_(a)}
       <div class="asset-body">
         <span class="pill ${a.type==='image'?'ai':a.type==='video'?'pd':'director'}" style="align-self:flex-start;">${typeLabel[a.type]||a.type}</span>
-        ${a.aiSummary ? renderAiSummaryBlock_(a) : `<button onclick="generateAssetAiSummary_(assets.find(x=>x.id==='${a.id}'))" style="font-size:11px; padding:4px 8px; align-self:flex-start;">${a.type==='image' ? '🤖 AI로 이름·태그·요약 자동 정리' : '🤖 AI 요약 생성' + (a.type==='video' && !youtubeVideoId_(a.url) ? ' (설명/메모 기반)' : '')}</button>`}
+        ${a.aiSummary ? renderAiSummaryBlock_(a) : `<button onclick="generateAssetAiSummary_(assets.find(x=>x.id==='${a.id}'))" style="font-size:11px; padding:4px 8px; align-self:flex-start;">${assetAiSummaryButtonLabel_(a)}</button>`}
         <input data-field="name" value="${escapeHtml_(a.name)}" placeholder="이름" onchange="updateAssetField('${a.id}','name',this.value)">
         <div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap; font-size:11px; color:var(--text-secondary);">
           <span>태그: ${(a.tags||[]).length ? (a.tags||[]).map(t => escapeHtml_(t)).join(', ') : '없음'}</span>
@@ -5709,6 +6000,11 @@ function renderAssets() {
         <div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap; font-size:11px; color:var(--text-secondary);">
           <span>연결된 프롬프트: ${(a.linkedPrompts||[]).length ? (a.linkedPrompts||[]).map(pid => escapeHtml_((assets.find(x=>x.id===pid)||{}).name) || '(이름없음)').join(', ') : '없음'}</span>
           <button onclick="openImagePromptPicker('${a.id}')" style="padding:2px 8px; font-size:11px;">관리</button>
+        </div>` : ''}
+        ${a.type === 'video' && !youtubeVideoId_(a.url) ? `
+        <div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap; font-size:11px; color:var(--text-secondary);">
+          <span>썸네일: ${a.thumbDataUrl ? '설정됨' : '없음(🎬 기본 아이콘)'}</span>
+          <button onclick="openVideoThumbModal_('${a.id}')" style="padding:2px 8px; font-size:11px;">썸네일 변경</button>
         </div>` : ''}
         ${a.type === 'prompt' ? renderLinkedImagesStrip_(a.id) : ''}
         <div class="asset-meta">
