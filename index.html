@@ -358,6 +358,11 @@
   .asset-subtab-btn { padding: 8px 14px; border-radius: 20px; border: 1px solid var(--border); background: var(--surface-1); color: var(--text-secondary); font-size: 13px; font-weight: 600; cursor: pointer; }
   .asset-subtab-btn.active { background: var(--text-primary); color: var(--surface-1); border-color: var(--text-primary); }
   .asset-subtab-btn span { opacity: 0.75; font-weight: 500; }
+  .group-subtabs { display: flex; gap: 6px; margin-bottom: 16px; flex-wrap: wrap; border-bottom: 1px solid var(--border); padding-bottom: 14px; }
+  .group-subtab-btn { padding: 8px 14px; border-radius: 20px; border: 1px solid var(--border); background: var(--surface-1); color: var(--text-secondary); font-size: 13px; font-weight: 600; cursor: pointer; }
+  .group-subtab-btn.active { background: var(--text-primary); color: var(--surface-1); border-color: var(--text-primary); }
+  .group-subtabpanel { display: none; }
+  .group-subtabpanel.active { display: block; }
   /* ---------- 달력 뷰 ----------
      한 주(cal-week)를 각각 하나의 CSS 그리드로 두고, 1행엔 날짜 숫자 칸(cal-daynum-cell)을,
      그 아래 행들엔 여러 날에 걸친 막대(cal-event-bar · 프로젝트 진행기간/캘린더 일정)를
@@ -447,13 +452,9 @@
 </header>
 <nav class="tabs">
   <button class="tab-btn active" data-tab="overview">개요</button>
-  <button class="tab-btn" data-tab="board">프로젝트 보드</button>
-  <button class="tab-btn" data-tab="aiqueue">작업 진행 현황</button>
-  <button class="tab-btn" data-tab="team">담당자별 보기</button>
-  <button class="tab-btn" data-tab="assets">자료 보관함</button>
-  <button class="tab-btn" data-tab="cutlist">컷리스트</button>
-  <button class="tab-btn" data-tab="schedule">일정 계산기</button>
-  <button class="tab-btn" data-tab="calendar">달력</button>
+  <button class="tab-btn" data-tab="project">프로젝트</button>
+  <button class="tab-btn" data-tab="production">제작 자료</button>
+  <button class="tab-btn" data-tab="timeline">일정</button>
   <button class="tab-btn" data-tab="guide">파이프라인 가이드</button>
   <button class="tab-btn" data-tab="report">리포트 · 자동화</button>
   <div class="tab-more" id="tabMoreWrap">
@@ -475,8 +476,14 @@
     <h2 class="section-title">마감 임박 / 주의 필요 프로젝트</h2>
     <div class="card" id="atRiskList"></div>
   </section>
-  <!-- PROJECT BOARD -->
-  <section class="tabpanel" id="tab-board">
+  <!-- PROJECT (프로젝트 보드 / 작업 진행 현황 / 담당자별 보기 통합) -->
+  <section class="tabpanel" id="tab-project">
+    <div class="group-subtabs">
+      <button type="button" class="group-subtab-btn active" data-group-subtab="board" onclick="activateGroupSubTab('project','board')">프로젝트 보드</button>
+      <button type="button" class="group-subtab-btn" data-group-subtab="aiqueue" onclick="activateGroupSubTab('project','aiqueue')">작업 진행 현황</button>
+      <button type="button" class="group-subtab-btn" data-group-subtab="team" onclick="activateGroupSubTab('project','team')">담당자별 보기</button>
+    </div>
+    <div class="group-subtabpanel active" id="subtab-board">
     <div class="filter-row">
       <button class="primary" onclick="openProjectModal()">+ 프로젝트 추가</button>
       <select id="filterStatus" onchange="renderBoard()">
@@ -506,9 +513,8 @@
       </table>
       <div class="empty-state" id="boardEmpty" style="display:none">등록된 프로젝트가 없습니다. 위 '+ 프로젝트 추가'로 시작하세요.</div>
     </div>
-  </section>
-  <!-- WORK STATUS -->
-  <section class="tabpanel" id="tab-aiqueue">
+  </div>
+    <div class="group-subtabpanel" id="subtab-aiqueue">
     <div class="filter-row">
       <button class="primary" onclick="openTaskModal()">+ 작업 추가</button>
       <select id="aiqTeamFilter" onchange="renderAIQueue()">
@@ -533,9 +539,8 @@
         <div id="col-완료"></div>
       </div>
     </div>
-  </section>
-  <!-- TEAM VIEW -->
-  <section class="tabpanel" id="tab-team">
+  </div>
+    <div class="group-subtabpanel" id="subtab-team">
     <h2 class="section-title">담당자별 워크로드</h2>
     <div class="note-box" style="margin-top:0;">디렉터·PD·작업자 이름으로 등록된 진행중 프로젝트(수주/실주 제외) 건수를 집계합니다. 동시에 3건 이상이면 과부하 경고를 표시합니다.</div>
     <div class="card" id="workloadSummary" style="margin-bottom:20px;"></div>
@@ -548,24 +553,7 @@
       </select>
     </div>
     <div id="teamContent"></div>
-  </section>
-  <!-- SCHEDULE CALCULATOR -->
-  <section class="tabpanel" id="tab-schedule">
-    <div class="note-box" style="margin-top:0; margin-bottom:16px;">
-      표에서 값을 바꾸면 바로 반영됩니다 — 따로 '계산' 버튼을 누르지 않아도 됩니다. 셀을 눌러 바로 값을 고치고, 표에 없는 소스 제공여부·수정횟수·AI활용여부·선행작업은 행의 <strong>⋮</strong> 아이콘을 눌러 옆 패널에서 편집하세요.
-      기본 공수·난이도 배수 등은 실측 데이터가 없는 초기 추정치이며, 프로젝트가 끝날 때마다 실제 소요 공수를 기록하면(보정계수) 점점 정확해집니다.
     </div>
-    <div class="filter-row">
-      <select id="scheduleProjectFilter" onchange="renderScheduleTasks()">
-        <option value="">연결 프로젝트 전체</option>
-      </select>
-    </div>
-    <div class="card" id="scheduleCycleWarning" style="display:none; margin-bottom:14px; border-color:var(--critical); color:var(--critical); font-size:12.5px;"></div>
-    <h2 class="section-title">타임라인 (표준 시나리오 기준)</h2>
-    <div class="card" id="scheduleGanttView" style="margin-bottom:20px;"></div>
-    <div id="scheduleTaskGroups"></div>
-    <div class="empty-state" id="scheduleTaskEmpty" style="display:none">등록된 작업이 없습니다. 아래 '+ 새 작업' 행을 눌러 추가하세요.</div>
-    <div id="scheduleResults"></div>
   </section>
   <!-- PIPELINE GUIDE (내부 교육/참고용) -->
   <section class="tabpanel" id="tab-guide">
@@ -777,8 +765,13 @@
       <p style="font-size:13px; margin:0;">· AI 보조 로토스코핑 파이프라인은 Runway 배경제거 기능 종료 이후 대체 툴 현황 재확인 필요</p>
     </div>
   </section>
-  <!-- ASSET LIBRARY (공용 에셋 보관함: 이미지/영상 레퍼런스/프롬프트) -->
-  <section class="tabpanel" id="tab-assets">
+  <!-- PRODUCTION (자료 보관함 / 컷리스트 통합) -->
+  <section class="tabpanel" id="tab-production">
+    <div class="group-subtabs">
+      <button type="button" class="group-subtab-btn active" data-group-subtab="assets" onclick="activateGroupSubTab('production','assets')">자료 보관함</button>
+      <button type="button" class="group-subtab-btn" data-group-subtab="cutlist" onclick="activateGroupSubTab('production','cutlist')">컷리스트</button>
+    </div>
+    <div class="group-subtabpanel active" id="subtab-assets">
     <div class="note-box" style="margin-top:0; margin-bottom:16px;">
       이미지·영상 레퍼런스·프롬프트를 회사 공용으로 모아두는 곳입니다. 프로젝트 하나에만 묶이지 않고, <strong>여러 프로젝트에 동시에 연결</strong>할 수 있습니다 (예: 자주 쓰는 레퍼런스 이미지를 여러 프로젝트에서 같이 참조).
       이미지는 저장 용량을 아끼기 위해 자동으로 리사이즈·압축되어 저장됩니다. 영상은 용량이 커서 이 사이트(Firestore)에 직접 저장하지 않고, <strong>파일을 올리면 회사 구글 드라이브에 자동 업로드</strong>되거나, 이미 다른 곳에 올려둔 영상이라면 <strong>링크(유튜브 등)</strong>로 등록할 수 있습니다. 아래 "영상 라이브러리" 탭의 "+ 자료 추가"나, AI 대화창의 "🎬 영상 첨부" 버튼으로 올릴 수 있습니다.
@@ -806,9 +799,8 @@
     <div class="asset-tag-filter asset-tag-subfilter" id="assetTagSubFilter"></div>
     <div class="grid" id="assetGrid" style="grid-template-columns: repeat(auto-fill, minmax(220px,1fr));"></div>
     <div class="empty-state" id="assetEmpty" style="display:none">등록된 자료가 없습니다. '+ 자료 추가'로 시작하세요.</div>
-  </section>
-  <!-- CUT LIST (프로젝트별 스토리보드 컷 목록: 수동 입력 또는 스토리보드 이미지/PDF/스프레드시트에서 자동 생성) -->
-  <section class="tabpanel" id="tab-cutlist">
+  </div>
+    <div class="group-subtabpanel" id="subtab-cutlist">
     <div class="note-box" style="margin-top:0; margin-bottom:16px;">
       스토리보드(콘티)를 장소/씬 단위로 묶어서 컷 단위 표로 관리합니다(장소 · 컷 · 내용 · 트랜지션). 아래 "스토리보드로 자동 생성"에 이미지·PDF·이미 정리된 스프레드시트(엑셀/CSV)를 올리면
       장소별로 묶인 컷 목록을 자동으로 채워주고, 이후 표에서 바로 값을 고치거나 행을 추가·삭제할 수 있습니다(자동 생성 없이 "+ 컷 직접 추가"로 처음부터 손으로 입력해도 됩니다).
@@ -836,9 +828,32 @@
     </datalist>
     <div id="cutGroups"></div>
     <div class="empty-state" id="cutEmpty" style="display:none">등록된 컷이 없습니다. "스토리보드로 자동 생성" 또는 "+ 컷 직접 추가"로 시작하세요.</div>
+    </div>
   </section>
-  <!-- CALENDAR (실제 달력 날짜 기준 마감일 뷰) -->
-  <section class="tabpanel" id="tab-calendar">
+  <!-- TIMELINE (일정 계산기 / 달력 통합 — 일정 계산기 자리로 옮겨왔고, 아래 REPORT 앞자리는 삭제됨) -->
+  <section class="tabpanel" id="tab-timeline">
+    <div class="group-subtabs">
+      <button type="button" class="group-subtab-btn active" data-group-subtab="schedule" onclick="activateGroupSubTab('timeline','schedule')">일정 계산기</button>
+      <button type="button" class="group-subtab-btn" data-group-subtab="calendar" onclick="activateGroupSubTab('timeline','calendar')">달력</button>
+    </div>
+    <div class="group-subtabpanel active" id="subtab-schedule">
+    <div class="note-box" style="margin-top:0; margin-bottom:16px;">
+      표에서 값을 바꾸면 바로 반영됩니다 — 따로 '계산' 버튼을 누르지 않아도 됩니다. 셀을 눌러 바로 값을 고치고, 표에 없는 소스 제공여부·수정횟수·AI활용여부·선행작업은 행의 <strong>⋮</strong> 아이콘을 눌러 옆 패널에서 편집하세요.
+      기본 공수·난이도 배수 등은 실측 데이터가 없는 초기 추정치이며, 프로젝트가 끝날 때마다 실제 소요 공수를 기록하면(보정계수) 점점 정확해집니다.
+    </div>
+    <div class="filter-row">
+      <select id="scheduleProjectFilter" onchange="renderScheduleTasks()">
+        <option value="">연결 프로젝트 전체</option>
+      </select>
+    </div>
+    <div class="card" id="scheduleCycleWarning" style="display:none; margin-bottom:14px; border-color:var(--critical); color:var(--critical); font-size:12.5px;"></div>
+    <h2 class="section-title">타임라인 (표준 시나리오 기준)</h2>
+    <div class="card" id="scheduleGanttView" style="margin-bottom:20px;"></div>
+    <div id="scheduleTaskGroups"></div>
+    <div class="empty-state" id="scheduleTaskEmpty" style="display:none">등록된 작업이 없습니다. 아래 '+ 새 작업' 행을 눌러 추가하세요.</div>
+    <div id="scheduleResults"></div>
+    </div>
+    <div class="group-subtabpanel" id="subtab-calendar">
     <div class="note-box" style="margin-top:0; margin-bottom:16px;">
       프로젝트의 <strong>마감일</strong>을 실제 달력 날짜 기준으로 볼 수 있는 뷰입니다. (일정 계산기의 타임라인은 상대적 D+n 기준이라, 실제 날짜가 필요할 때는 이 달력을 참고하세요.) 날짜 칸의 프로젝트를 누르면 바로 수정 화면이 열립니다. 날짜 칸의 "+ 일정"을 누르거나 아래 "+ 일정 추가" 버튼으로, 노션처럼 시작일~종료일 범위를 지정해 여러 날에 걸친 일정(휴무, 출장, 촬영 기간 등)을 한 번에 등록할 수 있습니다. 일정 추가 시 "연결 프로젝트"를 선택하면 매번 프로젝트명을 직접 입력하지 않아도 되고(🔗 표시로 구분됨), 막대에 마우스를 올리면 연결된 프로젝트명도 함께 보입니다.
     </div>
@@ -853,6 +868,7 @@
     </div>
     <div class="card">
       <div id="calendarGrid"></div>
+    </div>
     </div>
   </section>
   <!-- REPORT -->
@@ -2411,6 +2427,29 @@ document.querySelectorAll('.tab-more-item').forEach(btn => {
 function toggleMoreMenu(evt) {
   if (evt) evt.stopPropagation();
   document.getElementById('tabMoreMenu').classList.toggle('active');
+}
+// ---------- 탭 그룹 안의 서브탭(예: '프로젝트' 탭 안의 보드/작업 진행 현황/담당자별 보기) ----------
+// 탭이 너무 많아져서(원래 개별 탭이던 것들을) 상위 탭 하나 안에 서브탭으로 묶었다. renderAll()은
+// activateTab()에서 이미 항상 호출되므로, 여기서는 어떤 서브패널을 보여줄지 CSS만 전환하면 된다.
+const GROUP_SUBTAB_STORAGE_KEY = 'namu_pipeline_last_subtab_v1';
+const GROUP_DEFAULT_SUBTAB = { project: 'board', production: 'assets', timeline: 'schedule' };
+function activateGroupSubTab(parentTabName, subName) {
+  let subtabState = {};
+  try { subtabState = JSON.parse(localStorage.getItem(GROUP_SUBTAB_STORAGE_KEY) || '{}'); } catch (e) {}
+  subtabState[parentTabName] = subName;
+  try { localStorage.setItem(GROUP_SUBTAB_STORAGE_KEY, JSON.stringify(subtabState)); } catch (e) {}
+  const parentSection = document.getElementById('tab-' + parentTabName);
+  if (!parentSection) return;
+  parentSection.querySelectorAll('.group-subtab-btn').forEach(b => b.classList.toggle('active', b.dataset.groupSubtab === subName));
+  parentSection.querySelectorAll('.group-subtabpanel').forEach(p => p.classList.toggle('active', p.id === 'subtab-' + subName));
+}
+// 새로고침해도 그룹별로 보고 있던 서브탭이 유지되도록, 시작할 때 한 번 저장된 값(없으면 기본값)으로 맞춰준다.
+function restoreGroupSubTabs_() {
+  let subtabState = {};
+  try { subtabState = JSON.parse(localStorage.getItem(GROUP_SUBTAB_STORAGE_KEY) || '{}'); } catch (e) {}
+  Object.keys(GROUP_DEFAULT_SUBTAB).forEach(parent => {
+    activateGroupSubTab(parent, subtabState[parent] || GROUP_DEFAULT_SUBTAB[parent]);
+  });
 }
 function closeMoreMenu() {
   document.getElementById('tabMoreMenu').classList.remove('active');
@@ -6939,6 +6978,11 @@ function callVisionAiHybrid_(prompt, imageDataUrl) {
         { type: 'image_url', image_url: { url: imageDataUrl } },
       ] }],
       temperature: 0.3,
+      // 컷이 많은 스토리보드는 AI가 만들어야 할 JSON도 길어진다. 서버 기본 응답 길이 제한에 걸려
+      // JSON이 끝나기 전에 잘리는 것을 막기 위해 넉넉하게 명시적으로 늘려둔다(로컬 서버 대부분이 이 필드를
+      // 그대로 지원함 — max_tokens는 OpenAI 호환, num_predict는 구버전 Ollama 네이티브 호환용 별칭).
+      max_tokens: 4096,
+      num_predict: 4096,
     }),
   }).then(r => {
     if (!r.ok) throw new Error(`로컬 AI 서버 응답 오류 (${r.status})`);
@@ -6984,7 +7028,16 @@ function parseCutAiReply_(replyText) {
   const cleaned = stripAiThinking_(replyText);
   const found = findJsonObject_(cleaned, 'cuts');
   if (!found || !Array.isArray(found.obj.cuts)) {
-    throw new Error('AI가 정해진 형식(JSON)으로 응답하지 않았습니다' + (cleaned ? ' — 응답 일부: "' + cleaned.slice(0, 80) + '"' : ''));
+    // 컷이 많은 스토리보드일수록 AI가 만들 JSON도 길어져서, 응답 길이 제한에 걸려 중간에 잘리는 경우가
+    // 흔하다(예: "..."cuts": [ {"scene": "카페 -로 뚝 끊김"). 그래서 응답 끝부분이 중괄호/대괄호로 제대로
+    // 안 닫혀 있으면 "형식이 안 맞다"가 아니라 "응답이 잘렸을 수 있다"로 더 정확하게 안내하고, 진단에 필요한
+    // 응답 일부도 80자가 아니라 훨씬 넉넉하게 보여준다.
+    const trimmedEnd = cleaned.trim().slice(-1);
+    const looksTruncated = cleaned && trimmedEnd !== '}' && trimmedEnd !== ']';
+    const hint = looksTruncated
+      ? ' — AI 응답이 도중에 잘린 것 같습니다(컷이 많아 응답이 길어지면 서버 응답 길이 제한에 걸릴 수 있음. 파일을 나눠서 올리거나 잠시 후 다시 시도해보세요).'
+      : '';
+    throw new Error('AI가 정해진 형식(JSON)으로 응답하지 않았습니다' + hint + (cleaned ? ' — 응답 일부: "' + cleaned.slice(0, 300) + '"' : ''));
   }
   return found.obj.cuts.map(raw => ({
     scene: (raw && raw.scene && String(raw.scene).trim()) || '',
@@ -7231,6 +7284,7 @@ initAiChatVideoDragDrop_();
 // 로컬 AI 자동 탐색 패널 마운트 — 로그인/Firestore와 무관하게(로그인 여부와 상관없이 이 컴퓨터에
 // 어떤 로컬 AI가 떠 있는지는 확인할 수 있어야 하므로) 페이지가 뜨자마자 한 번 자동 탐색을 시작한다.
 if (window.NamuLocalAI && window.NamuLocalAI.ui) window.NamuLocalAI.ui.mount('localAiStatusPanel');
+restoreGroupSubTabs_();
 // 탭을 켜놓은 채 오래 두어도(다른 사람의 변경 없이) 마감 임박 알림은 계속 체크되도록 주기적으로도 확인한다.
 setInterval(() => { if (currentUser) maybeNotifyDeadlines_(); }, 10 * 60 * 1000);
 </script>
