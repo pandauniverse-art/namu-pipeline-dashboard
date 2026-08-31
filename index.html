@@ -891,7 +891,7 @@
     <div class="filter-row">
       <button class="primary" onclick="openCutAiImportModal_()">🎬 스토리보드로 자동 생성</button>
       <button type="button" onclick="addCut_()">+ 컷 직접 추가</button>
-      <select id="cutProjectFilter" onchange="renderCuts()"><option value="">전체 프로젝트</option></select>
+      <select id="cutProjectFilter" onchange="onCutProjectFilterChanged_()"><option value="">전체 프로젝트</option></select>
       <input type="text" id="cutKeyword" placeholder="장소/컷 번호/내용/메모 검색" oninput="renderCutsDebounced_()" style="flex:1; min-width:160px;">
       <button type="button" onclick="exportCutsCsv_()">CSV로 내보내기</button>
       <button type="button" onclick="openCutPromptViewer_()">📋 프롬프트 보기</button>
@@ -1211,7 +1211,7 @@
     </div>
     <div class="form-grid">
       <div style="grid-column:1/-1"><label>연결 프로젝트</label>
-        <select id="cai-project" onchange="cutAiProjectChanged_()"></select>
+        <select id="cai-project" onchange="onCaiProjectChanged_()"></select>
       </div>
       <div style="grid-column:1/-1"><label>키워드/제작의도 (파일 없이 시작하면 필수, 있으면 분석에 참고용으로 같이 전달됨)</label>
         <textarea id="cai-context" rows="2" placeholder="예: 키오스크 매장 광고, 밝고 경쾌한 톤, 제품 클로즈업 강조 / 30초 브랜드필름, 잔잔하고 감성적인 톤 등"></textarea>
@@ -6774,6 +6774,11 @@ function updateCutField(id, field, value) {
 function addCut_(projectId, scene) {
   const filterSel = document.getElementById('cutProjectFilter');
   const pid = (projectId !== undefined && projectId !== null) ? projectId : (filterSel ? filterSel.value : '');
+  if (!pid) {
+    // 프로젝트를 지정하지 않고 만들면 "미지정" 그룹에 들어가 다른 사람의 미지정 컷과 뒤섞이기 쉬우니,
+    // 막지는 않되(급하게 아무 프로젝트에나 메모하듯 써야 할 수도 있으니) 매번 가볍게 알려준다.
+    showToast('프로젝트를 지정하지 않아 "미지정" 그룹에 추가됩니다 — 상단 필터에서 프로젝트를 고르면 이후 컷은 자동으로 그 프로젝트로 구분됩니다');
+  }
   const sceneVal = scene || '';
   const sameGroup = cuts.filter(c => (c.projectId || '') === (pid || ''));
   const sameScene = sameGroup.filter(c => (c.scene || '') === sceneVal);
@@ -6887,10 +6892,39 @@ function renderCutsDebounced_() {
   clearTimeout(cutKeywordDebounce_);
   cutKeywordDebounce_ = setTimeout(renderCuts, 200);
 }
+// ---------- "어떤 프로젝트에서 컷리스트를 작업 중인지"를 이 브라우저(이 컴퓨터)에 기억해두는 설정 ----------
+// 사용자 요구사항: 프로젝트를 매번 새로 지정하지 않아도, 한 번 고른 프로젝트가 자동으로 계속 유지되어
+// 다른 사람이 다른 프로젝트에서 작업한 컷과 뒤섞이지 않게 한다. 팀 공용 데이터가 아니라 "이 컴퓨터 이
+// 브라우저"에서만 의미 있는 개인 작업 상태이므로(다른 컴퓨터에서 로그인하면 그 컴퓨터 기준으로 다시
+// 고르면 됨) Firestore가 아니라 localStorage에만 저장한다.
+const CUT_LAST_PROJECT_KEY_ = 'namu_cutLastProjectId_v1';
+function loadCutLastProjectId_() {
+  try { return localStorage.getItem(CUT_LAST_PROJECT_KEY_) || ''; } catch (e) { return ''; }
+}
+function saveCutLastProjectId_(id) {
+  try { localStorage.setItem(CUT_LAST_PROJECT_KEY_, id || ''); } catch (e) {}
+}
+let cutProjectFilterRestored_ = false; // 이번 세션에서 저장된 값으로 이미 한 번 복원했는지(그 이후엔 사용자가 고른 값을 그대로 존중)
+function onCutProjectFilterChanged_() {
+  const filterSel = document.getElementById('cutProjectFilter');
+  cutProjectFilterRestored_ = true; // 사용자가 직접 바꿨으니 이후 새로고침 전까지는 자동복원 로직이 덮어쓰지 않게
+  saveCutLastProjectId_(filterSel ? filterSel.value : '');
+  renderCuts();
+}
 function renderCuts() {
   const filterSel = document.getElementById('cutProjectFilter');
   if (!filterSel) return; // 컷리스트 탭 DOM이 아직 준비 안 됐으면(초기 로딩 등) 조용히 건너뜀
-  const cur = filterSel.value;
+  let cur = filterSel.value;
+  // 이번 세션에서 아직 한 번도 복원한 적이 없고, 지금 필터가 비어 있으면(=새로고침 직후 등) 이 브라우저에
+  // 마지막으로 저장해둔 프로젝트를 자동으로 다시 선택해준다. 사용자가 이미 뭔가 골랐거나 한 번 복원했으면
+  // 다시 덮어쓰지 않는다.
+  if (!cutProjectFilterRestored_) {
+    cutProjectFilterRestored_ = true;
+    if (!cur) {
+      const saved = loadCutLastProjectId_();
+      if (saved) cur = saved;
+    }
+  }
   filterSel.innerHTML = '<option value="">전체 프로젝트</option>' +
     projects.map(p => `<option value="${p.id}">${escapeHtml_(p.name)}</option>`).join('');
   filterSel.value = cur;
@@ -7910,6 +7944,18 @@ function cutAiProjectChanged_() {
   if (!projSel.value || contextEl.value.trim()) return;
   const p = projects.find(x => x.id === projSel.value);
   if (p && p.note) contextEl.value = p.note;
+}
+// 사용자가 이 모달에서 프로젝트를 직접 고르면(모달을 여는 시점의 자동 채움과 구분하기 위해 이 함수는
+// select의 onchange에만 연결한다), 그 선택을 이 브라우저의 "마지막 작업 프로젝트"로도 저장하고 컷리스트
+// 상단 필터도 같이 맞춰서, 생성된 컷이 방금 고른 프로젝트로 바로 보이고 다음에 새로 만들 때도 자동으로
+// 이어지게 한다.
+function onCaiProjectChanged_() {
+  cutAiProjectChanged_();
+  const val = document.getElementById('cai-project').value;
+  saveCutLastProjectId_(val);
+  cutProjectFilterRestored_ = true;
+  const toolbarFilter = document.getElementById('cutProjectFilter');
+  if (toolbarFilter) toolbarFilter.value = val;
 }
 // 클립보드에서 붙여넣은 이미지를 기존 파일 선택 내용에 이어붙인다(파일 input의 FileList는 직접
 // 수정할 수 없어서 DataTransfer로 새로 만들어 통째로 교체하는 방식을 쓴다).
