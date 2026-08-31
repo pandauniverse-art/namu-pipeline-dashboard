@@ -838,6 +838,7 @@
       <select id="cutProjectFilter" onchange="renderCuts()"><option value="">전체 프로젝트</option></select>
       <input type="text" id="cutKeyword" placeholder="장소/컷 번호/내용/메모 검색" oninput="renderCutsDebounced_()" style="flex:1; min-width:160px;">
       <button type="button" onclick="exportCutsCsv_()">CSV로 내보내기</button>
+      <button type="button" onclick="exportCutsSeedancePrompts_()">🎬 시댄스 2.5 프롬프트 내보내기</button>
       <button type="button" onclick="deleteAllCuts_()" style="color:var(--critical);">전체 삭제</button>
     </div>
     <datalist id="cutShotTypeList">
@@ -1090,6 +1091,15 @@
       <label>연결된 자료 (이미지/영상 라이브러리)</label>
       <div id="cp-linked-assets" style="font-size:12px; color:var(--text-secondary); margin-bottom:6px;"></div>
       <button type="button" onclick="openCutAssetPicker_()" style="width:100%;">자료 연결 관리</button>
+    </div>
+    <div class="field">
+      <label>시댄스(Seedance) 2.5용 프롬프트</label>
+      <div id="cp-seedance-meta" style="font-size:11px; color:var(--text-muted); margin-bottom:6px;"></div>
+      <textarea id="cp-seedance-prompt" rows="6" placeholder="위 항목(장소·내용·샷사이즈·카메라무브먼트·메모·연결자료)을 채우면 자동으로 채워집니다. 직접 다듬은 뒤 그대로 복사해서 쓰세요." onchange="updateCutField(document.getElementById('cp-id').value,'seedancePrompt',this.value)"></textarea>
+      <div style="display:flex; gap:6px; margin-top:6px;">
+        <button type="button" onclick="regenerateCutSeedancePrompt_()" style="flex:1;">🔄 자동 생성</button>
+        <button type="button" onclick="copyCutSeedancePrompt_()" style="flex:1;">📋 복사</button>
+      </div>
     </div>
     <button onclick="deleteCutFromPanel_()" style="width:100%; margin-top:6px;">이 컷 삭제</button>
   </div>
@@ -6656,7 +6666,7 @@ function addCut_(projectId, scene) {
     id, projectId: pid || '', scene: sceneVal, order: sameGroup.length ? Math.max(...sameGroup.map(c => c.order || 0)) + 1 : 1,
     cutNo: String(sameScene.length + 1), description: '', transition: '', shotType: '', cameraMove: '', durationSec: 0,
     status: CUT_STATUS_OPTIONS_[0], notes: '', thumbDataUrl: '', linkedAssetIds: [], sourceType: 'manual',
-    updatedAt: Date.now(),
+    seedancePrompt: '', updatedAt: Date.now(),
   });
   renderCuts();
   queueAutoSave();
@@ -6883,6 +6893,7 @@ function openCutPanel_(id) {
   document.getElementById('cp-thumb-file').value = '';
   setCutThumbPreview_(c.thumbDataUrl || '');
   renderCutLinkedAssetsSummary_(c);
+  refreshCutSeedancePromptField_(c);
   document.getElementById('cutSidePanelBackdrop').classList.add('active');
 }
 function closeCutPanel_() { document.getElementById('cutSidePanelBackdrop').classList.remove('active'); applyPendingRemoteIfAny(); }
@@ -6917,6 +6928,9 @@ function renderCutLinkedAssetsSummary_(c) {
   const wrap = document.getElementById('cp-linked-assets');
   const linked = (c.linkedAssetIds || []).map(aid => assets.find(a => a.id === aid)).filter(Boolean);
   wrap.textContent = linked.length ? linked.map(a => a.name || '(이름없음)').join(', ') : '연결된 자료 없음';
+  // 연결 자료가 바뀌면(피커에서 체크/해제) [Image1]/[Video1]... 라벨이 가리키는 대상도 바뀌므로,
+  // 아직 저장되지 않은 프롬프트 본문은 건드리지 않고(사용자가 다듬던 내용을 잃지 않도록) 안내 줄만 새로 계산한다.
+  refreshCutSeedanceMeta_(c);
 }
 // ---------- 컷 ↔ 자료(이미지/영상) 연결 피커 ----------
 function openCutAssetPicker_() {
@@ -6950,6 +6964,120 @@ function closeCutAssetPicker_() {
   document.getElementById('cutAssetPickerBackdrop').classList.remove('active');
   const c = findCut_(document.getElementById('cp-id').value);
   if (c) renderCutLinkedAssetsSummary_(c);
+}
+// ---------- 컷 → 시댄스(Seedance) 2.5용 프롬프트 자동 정리 ----------
+// 시댄스 2.5는 프롬프트 문장 안에서 참고 이미지/영상을 [Image1], [Image2]... / [Video1]... 식으로
+// 번호 매겨 지칭하고("The character from [Image1] performs the dance from [Video1]." 같은 형태),
+// 대사는 큰따옴표로 감싸고, 카메라 무브먼트·조명·분위기·행동을 구체적으로 적을수록 결과가 좋다고
+// 안내한다(길이는 4~30초 지정 또는 자동(-1), 화면비는 adaptive 포함, 다국어 프롬프트 지원).
+// 이 함수는 AI 호출 없이, 표에 이미 입력된 구조화된 컷 정보(장소·내용·샷사이즈·카메라무브먼트·
+// 메모·연결자료)를 그 형식에 맞춰 즉시 하나의 프롬프트 문장으로 조립한다.
+function buildSeedancePrompt_(cut) {
+  const linkedAssetObjs = (cut.linkedAssetIds || []).map(aid => assets.find(a => a.id === aid)).filter(Boolean);
+  const refImages = linkedAssetObjs.filter(a => a.type === 'image');
+  const refVideos = linkedAssetObjs.filter(a => a.type === 'video');
+  const imageLabels = refImages.map((a, i) => `[Image${i + 1}]`);
+  const videoLabels = refVideos.map((a, i) => `[Video${i + 1}]`);
+  const parts = [];
+  if (imageLabels.length) parts.push(`${imageLabels.join(', ')} 속 인물·배경·화풍을 그대로 유지하면서 다음 장면을 생성해줘.`);
+  if (cut.scene && cut.scene.trim()) parts.push(`장소/씬: ${cut.scene.trim()}.`);
+  if (cut.description && cut.description.trim()) {
+    const d = cut.description.trim();
+    parts.push(/[.!?]$/.test(d) ? d : d + '.');
+  }
+  if (cut.shotType && cut.shotType.trim()) parts.push(`샷 사이즈: ${cut.shotType.trim()}.`);
+  if (cut.cameraMove && cut.cameraMove.trim()) {
+    parts.push(cut.cameraMove.trim() === '고정'
+      ? '카메라는 고정(fixed)한 채로 움직이지 않는다.'
+      : `카메라 무브먼트: ${cut.cameraMove.trim()}.`);
+  }
+  if (videoLabels.length) parts.push(`${videoLabels.join(', ')}에 담긴 움직임/편집 흐름을 참고해줘.`);
+  if (cut.notes && cut.notes.trim()) parts.push(`대사/메모: "${cut.notes.trim()}"`);
+  if (cut.transition && cut.transition.trim() && cut.transition.trim() !== '-' && cut.transition.trim() !== '—') {
+    parts.push(`다음 컷으로의 전환: ${cut.transition.trim()}.`);
+  }
+  const rawDuration = Number(cut.durationSec) || 0;
+  const durationSec = rawDuration > 0 ? Math.min(30, Math.max(4, Math.round(rawDuration))) : -1;
+  return { prompt: parts.join(' '), durationSec, refImages, refVideos };
+}
+function formatSeedanceMetaLine_(built) {
+  const durationLabel = built.durationSec === -1 ? '자동(-1)' : `${built.durationSec}초`;
+  const refParts = [];
+  if (built.refImages.length) refParts.push(built.refImages.map((a, i) => `[Image${i + 1}] ${a.name || '(이름없음)'}`).join(', '));
+  if (built.refVideos.length) refParts.push(built.refVideos.map((a, i) => `[Video${i + 1}] ${a.name || '(이름없음)'}`).join(', '));
+  const refLabel = refParts.length ? refParts.join(' · ') : '연결된 참고 자료 없음(자료 연결 관리에서 추가 가능)';
+  return `권장 길이: ${durationLabel} (4~30초 또는 자동) · 화면비: adaptive 권장 · 참고 자료: ${refLabel}`;
+}
+function refreshCutSeedanceMeta_(c) {
+  const metaEl = document.getElementById('cp-seedance-meta');
+  if (!metaEl || !c) return;
+  metaEl.textContent = formatSeedanceMetaLine_(buildSeedancePrompt_(c));
+}
+// 패널을 열 때: 이미 저장된(사용자가 손으로 다듬은) 프롬프트가 있으면 그걸 보여주고, 없으면 자동 생성한
+// 초안을 보여준다(아직 저장은 하지 않음 — "자동 생성" 버튼을 눌러야 실제로 저장됨).
+function refreshCutSeedancePromptField_(c) {
+  const promptEl = document.getElementById('cp-seedance-prompt');
+  if (!promptEl || !c) return;
+  const built = buildSeedancePrompt_(c);
+  document.getElementById('cp-seedance-meta').textContent = formatSeedanceMetaLine_(built);
+  promptEl.value = (c.seedancePrompt && c.seedancePrompt.trim()) ? c.seedancePrompt : built.prompt;
+}
+function regenerateCutSeedancePrompt_() {
+  const id = document.getElementById('cp-id').value;
+  const c = findCut_(id);
+  if (!c) return;
+  const built = buildSeedancePrompt_(c);
+  document.getElementById('cp-seedance-prompt').value = built.prompt;
+  document.getElementById('cp-seedance-meta').textContent = formatSeedanceMetaLine_(built);
+  updateCutField(id, 'seedancePrompt', built.prompt);
+  showToast('시댄스 2.5 프롬프트를 다시 생성했습니다');
+}
+function copyCutSeedancePrompt_() {
+  const promptEl = document.getElementById('cp-seedance-prompt');
+  const text = promptEl ? promptEl.value : '';
+  if (!text.trim()) { showToast('복사할 프롬프트가 없습니다'); return; }
+  const done = () => showToast('프롬프트가 복사되었습니다');
+  const fail = () => showToast('복사에 실패했습니다. 직접 선택해서 복사해주세요');
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(text).then(done).catch(fail);
+  } else {
+    try { promptEl.select(); document.execCommand('copy'); done(); } catch (e) { fail(); }
+  }
+}
+// 표에 있는(필터된) 컷 전체를 컷 하나당 한 블록씩, 사람이 읽고 바로 시댄스 2.5에 붙여넣을 수 있는
+// 텍스트 파일로 내보낸다. 손으로 다듬어 저장해둔 프롬프트가 있으면 그걸, 없으면 그 자리에서 자동
+// 생성한 프롬프트를 사용한다(CSV 내보내기와 같은 필터·정렬 기준을 따름).
+function exportCutsSeedancePrompts_() {
+  const filterSel = document.getElementById('cutProjectFilter');
+  const projectFilter = filterSel ? filterSel.value : '';
+  const rows = cuts.filter(c => !projectFilter || (c.projectId || '') === projectFilter)
+    .slice().sort((a, b) => (a.projectId || '').localeCompare(b.projectId || '') || (a.scene || '').localeCompare(b.scene || '') || (a.order || 0) - (b.order || 0));
+  if (!rows.length) { showToast('내보낼 컷이 없습니다'); return; }
+  const sep = '='.repeat(64);
+  const blocks = rows.map(c => {
+    const proj = projects.find(p => p.id === c.projectId);
+    const built = buildSeedancePrompt_(c);
+    const promptText = (c.seedancePrompt && c.seedancePrompt.trim()) ? c.seedancePrompt.trim() : built.prompt;
+    const durationLabel = built.durationSec === -1 ? '자동' : `${built.durationSec}초`;
+    const headerLine = `[${proj ? proj.name + ' · ' : ''}${c.scene || '(장소 미지정)'}] 컷 ${c.cutNo || '-'}  |  길이: ${durationLabel}` +
+      (c.shotType ? `  |  샷: ${c.shotType}` : '') + (c.cameraMove ? `  |  카메라: ${c.cameraMove}` : '');
+    const refLines = [];
+    if (built.refImages.length) refLines.push(`참고 이미지: ${built.refImages.map((a, i) => `[Image${i + 1}] ${a.name || '(이름없음)'}`).join(', ')}`);
+    if (built.refVideos.length) refLines.push(`참고 영상: ${built.refVideos.map((a, i) => `[Video${i + 1}] ${a.name || '(이름없음)'}`).join(', ')}`);
+    return [sep, headerLine, ...refLines, '-'.repeat(64), promptText || '(내용 없음 — 컷 표에서 내용을 채운 뒤 다시 내보내주세요)'].join('\n');
+  });
+  const header = `시댄스(Seedance) 2.5 프롬프트 모음 — ${new Date().toLocaleString('ko-KR')} 기준, 총 ${rows.length}개 컷\n` +
+    '(각 블록을 그대로 복사해 시댄스 2.5에 붙여넣으세요. [Image1]/[Video1] 등은 위 "참고 이미지/영상" 줄의 자료를 그 순서대로 함께 업로드해야 합니다.)\n';
+  const blob = new Blob(['﻿' + header + '\n' + blocks.join('\n\n') + '\n'], { type: 'text/plain;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `시댄스2.5_프롬프트_${new Date().toISOString().slice(0, 10)}.txt`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 5000);
+  showToast(`${rows.length}개 컷의 프롬프트를 내보냈습니다`);
 }
 // ---------- 스토리보드 → 컷 자동 생성 (이미지/PDF는 AI 비전 분석, 스프레드시트는 AI 없이 표 그대로) ----------
 // 컷 분석용 프롬프트: analyzeImageWithAi_()와 같은 "JSON만 답하라" 원칙을 그대로 따르되, 결과가 객체 하나가
@@ -7281,7 +7409,7 @@ function runCutAiImport_() {
       order += 1;
       cuts.push(Object.assign({
         id: genId_('cut'), projectId: projectId || '', order,
-        status: CUT_STATUS_OPTIONS_[0], thumbDataUrl: '', linkedAssetIds: [], sourceType, updatedAt: Date.now(),
+        status: CUT_STATUS_OPTIONS_[0], thumbDataUrl: '', linkedAssetIds: [], sourceType, seedancePrompt: '', updatedAt: Date.now(),
       }, c));
       importedCount++;
     });
