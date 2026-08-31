@@ -7921,6 +7921,10 @@ function openCutAiImportModal_() {
   cutAiProjectChanged_(); // 프로젝트가 미리 선택돼 있었으면(필터에서 넘어온 경우) 비고란으로 바로 채워준다
   document.getElementById('cai-files').value = '';
   document.getElementById('cai-status').textContent = '';
+  // 이전에 시작한 분석이 실패/중단되는 과정에서 어떤 이유로든 버튼이 disabled 상태로 남아있을 수 있으니,
+  // 모달을 다시 열 때는 항상 눌러볼 수 있는 상태로 리셋한다(파일 유무와 무관하게 버튼 자체는 항상
+  // 활성화되어 있어야 하며, 실제 시작 가능 여부는 클릭 시 runCutAiImport_ 안에서 판단한다).
+  document.getElementById('cai-start-btn').disabled = false;
   updateCutAiFileListStatus_();
   const local = loadCutAiLocalSettings_();
   document.getElementById('cai-local-enabled').checked = local.enabled;
@@ -8001,6 +8005,23 @@ function withRateLimitRetry_(callFn, statusEl, label, retriesLeft) {
       .then(() => withRateLimitRetry_(callFn, statusEl, label, retriesLeft - 1));
   });
 }
+// AI 응답이 왔지만(요금제한은 아니지만) 정해진 JSON 형식이 아니어서 parseCutAiReply_가 실패하는 경우가
+// 종종 있다(응답이 중간에 잘리거나, 모델이 설명을 덧붙이는 등). 이런 "형식 오류"는 rate limit과 달리
+// withRateLimitRetry_가 감지하지 못해 그 자리에서 바로 실패 처리되므로, 컷을 하나도 못 건지고 끝나는
+// 걸 줄이기 위해 형식 오류에 한해 짧게 한두 번 더 자동으로 재시도한다.
+function callAndParseCutsWithRetry_(callFn, statusEl, label, retriesLeft) {
+  retriesLeft = (retriesLeft == null) ? 2 : retriesLeft;
+  return withRateLimitRetry_(callFn, statusEl, label).then(data => {
+    if (data.error) throw new Error(data.error);
+    try {
+      return parseCutAiReply_(data.reply);
+    } catch (parseErr) {
+      if (retriesLeft <= 0) throw parseErr;
+      statusEl.textContent += `\n🔁 "${label}" 응답 형식이 올바르지 않아 다시 시도합니다… (${parseErr.message})`;
+      return callAndParseCutsWithRetry_(callFn, statusEl, label, retriesLeft - 1);
+    }
+  });
+}
 function runCutAiImport_() {
   const files = Array.from(document.getElementById('cai-files').files || []);
   const projectId = document.getElementById('cai-project').value;
@@ -8033,10 +8054,9 @@ function runCutAiImport_() {
   // 텍스트만으로 새로 기획하는 별도 경로로 처리하고 끝낸다(아래 파일별 runSequential 흐름은 타지 않음).
   if (!files.length) {
     statusEl.textContent = `시작: ${startedAt.toLocaleTimeString('ko-KR')} · 키워드/제작의도만으로 스토리보드를 새로 기획하는 중…`;
-    withRateLimitRetry_(() => callTextAiWithFallbackChoice_(buildCutTextGenPrompt_(context, targetRuntimeSec)), statusEl, '스토리보드 기획')
-      .then(data => {
-        if (data.error) throw new Error(data.error);
-        appendCuts(parseCutAiReply_(data.reply), 'ai');
+    callAndParseCutsWithRetry_(() => callTextAiWithFallbackChoice_(buildCutTextGenPrompt_(context, targetRuntimeSec)), statusEl, '스토리보드 기획')
+      .then(parsedCuts => {
+        appendCuts(parsedCuts, 'ai');
         // AI 생성처럼 드물고 확실히 중요한 변경은, 잦은 타이핑용 900ms 디바운스(queueAutoSave)를 그대로
         // 타지 않고 즉시 저장한다(doAutoSave) — 저장되기 전에 새로고침해서 방금 만든 컷을 잃어버리는
         // 사고를 최대한 줄이기 위함.
@@ -8068,19 +8088,17 @@ function runCutAiImport_() {
     if (isPdf) {
       return renderPdfToImages_(file).then(images => runSequential(images, (imgDataUrl, pageIdx) => {
         statusEl.textContent = `시작: ${startedAt.toLocaleTimeString('ko-KR')} · "${file.name}" ${pageIdx + 1}/${images.length}페이지 분석 중…`;
-        return withRateLimitRetry_(() => callVisionAiWithFallbackChoice_(buildCutSplitPrompt_(context), imgDataUrl), statusEl, `${file.name} ${pageIdx + 1}페이지`).then(data => {
-          if (data.error) throw new Error(data.error);
-          appendCuts(parseCutAiReply_(data.reply), 'ai');
+        return callAndParseCutsWithRetry_(() => callVisionAiWithFallbackChoice_(buildCutSplitPrompt_(context), imgDataUrl), statusEl, `${file.name} ${pageIdx + 1}페이지`).then(parsedCuts => {
+          appendCuts(parsedCuts, 'ai');
           renderCuts(); doAutoSave(); // 즉시 저장 — 사유는 위 "스토리보드 기획" 분기 주석 참고
         }).catch(err => { statusEl.textContent += `\n⚠️ "${file.name}" ${pageIdx + 1}페이지 분석 실패: ${err.message}`; });
       })).catch(err => { statusEl.textContent += `\n⚠️ "${file.name}" PDF를 읽지 못했습니다: ${err.message}`; });
     }
     if (isImage) {
       return resizeImageFile_(file).then(({ dataUrl }) =>
-        withRateLimitRetry_(() => callVisionAiWithFallbackChoice_(buildCutSplitPrompt_(context), dataUrl), statusEl, file.name)
-      ).then(data => {
-        if (data.error) throw new Error(data.error);
-        appendCuts(parseCutAiReply_(data.reply), 'ai');
+        callAndParseCutsWithRetry_(() => callVisionAiWithFallbackChoice_(buildCutSplitPrompt_(context), dataUrl), statusEl, file.name)
+      ).then(parsedCuts => {
+        appendCuts(parsedCuts, 'ai');
         renderCuts(); doAutoSave(); // 즉시 저장 — 사유는 위 "스토리보드 기획" 분기 주석 참고
       }).catch(err => { statusEl.textContent += `\n⚠️ "${file.name}" 분석 실패: ${err.message}`; });
     }
