@@ -171,6 +171,10 @@
   .tab-more-item { display: block; width: 100%; text-align: left; border: none; background: transparent; border-radius: 6px; padding: 9px 10px; font-weight: 600; font-size: 13px; color: var(--text-secondary); }
   .tab-more-item:hover { background: var(--surface-2); color: var(--text-primary); }
   .tab-more-item.active { color: var(--text-primary); background: var(--surface-2); }
+  .group-nav-item { display: block; width: 100%; text-align: left; border: none; background: transparent; border-radius: 6px; padding: 9px 10px; font-weight: 600; font-size: 13px; color: var(--text-secondary); cursor: pointer; }
+  .group-nav-item:hover { background: var(--surface-2); color: var(--text-primary); }
+  /* 프로젝트/제작 자료/일정 묶음 탭은 클릭뿐 아니라 마우스를 올리기만 해도 서브탭 미리보기가 뜬다(더보기는 클릭 전용 유지). */
+  .group-nav-wrap:hover > .tab-more-menu { display: block; }
   main { padding: 32px 36px 80px; max-width: 1320px; margin: 0 auto; }
   .tabpanel { display: none; }
   .tabpanel.active { display: block; }
@@ -452,9 +456,28 @@
 </header>
 <nav class="tabs">
   <button class="tab-btn active" data-tab="overview">개요</button>
-  <button class="tab-btn" data-tab="project">프로젝트</button>
-  <button class="tab-btn" data-tab="production">제작 자료</button>
-  <button class="tab-btn" data-tab="timeline">일정</button>
+  <div class="tab-more group-nav-wrap" id="tabGroupWrap-project">
+    <button class="tab-btn tab-more-btn" data-tab="project" onclick="toggleGroupNavMenu(event,'project')">프로젝트 보드 ▾</button>
+    <div class="tab-more-menu" id="tabGroupMenu-project">
+      <button type="button" class="group-nav-item" onclick="jumpToGroupSubTab_('project','board')">프로젝트 보드</button>
+      <button type="button" class="group-nav-item" onclick="jumpToGroupSubTab_('project','aiqueue')">작업 진행 현황</button>
+      <button type="button" class="group-nav-item" onclick="jumpToGroupSubTab_('project','team')">담당자별 보기</button>
+    </div>
+  </div>
+  <div class="tab-more group-nav-wrap" id="tabGroupWrap-production">
+    <button class="tab-btn tab-more-btn" data-tab="production" onclick="toggleGroupNavMenu(event,'production')">자료 보관함 ▾</button>
+    <div class="tab-more-menu" id="tabGroupMenu-production">
+      <button type="button" class="group-nav-item" onclick="jumpToGroupSubTab_('production','assets')">자료 보관함</button>
+      <button type="button" class="group-nav-item" onclick="jumpToGroupSubTab_('production','cutlist')">컷리스트</button>
+    </div>
+  </div>
+  <div class="tab-more group-nav-wrap" id="tabGroupWrap-timeline">
+    <button class="tab-btn tab-more-btn" data-tab="timeline" onclick="toggleGroupNavMenu(event,'timeline')">일정 계산기 ▾</button>
+    <div class="tab-more-menu" id="tabGroupMenu-timeline">
+      <button type="button" class="group-nav-item" onclick="jumpToGroupSubTab_('timeline','schedule')">일정 계산기</button>
+      <button type="button" class="group-nav-item" onclick="jumpToGroupSubTab_('timeline','calendar')">달력</button>
+    </div>
+  </div>
   <button class="tab-btn" data-tab="guide">파이프라인 가이드</button>
   <button class="tab-btn" data-tab="report">리포트 · 자동화</button>
   <div class="tab-more" id="tabMoreWrap">
@@ -2454,9 +2477,39 @@ function restoreGroupSubTabs_() {
 function closeMoreMenu() {
   document.getElementById('tabMoreMenu').classList.remove('active');
 }
+// ---------- 묶음 탭(프로젝트/제작 자료/일정) 클릭 시 서브탭 미리보기 드롭다운 ----------
+// '더보기 ▾'와 같은 .tab-more/.tab-more-menu 구조를 그대로 재사용하되, 클릭 시 activateTab()도
+// 함께 실행되도록 data-tab 속성은 남겨둔다(탭 자체 이동 + 드롭다운 미리보기를 동시에 제공).
+const GROUP_NAV_NAMES_ = ['project', 'production', 'timeline'];
+function toggleGroupNavMenu(evt, groupName) {
+  if (evt) evt.stopPropagation();
+  const menu = document.getElementById('tabGroupMenu-' + groupName);
+  const willOpen = menu && !menu.classList.contains('active');
+  closeAllGroupNavMenus_();
+  closeMoreMenu();
+  if (willOpen && menu) menu.classList.add('active');
+}
+function closeAllGroupNavMenus_() {
+  GROUP_NAV_NAMES_.forEach(g => {
+    const m = document.getElementById('tabGroupMenu-' + g);
+    if (m) m.classList.remove('active');
+  });
+}
+function jumpToGroupSubTab_(groupName, subName) {
+  activateTab(groupName);
+  activateGroupSubTab(groupName, subName);
+  closeAllGroupNavMenus_();
+}
 document.addEventListener('click', (evt) => {
   const wrap = document.getElementById('tabMoreWrap');
   if (wrap && !wrap.contains(evt.target)) closeMoreMenu();
+  GROUP_NAV_NAMES_.forEach(g => {
+    const gWrap = document.getElementById('tabGroupWrap-' + g);
+    if (gWrap && !gWrap.contains(evt.target)) {
+      const m = document.getElementById('tabGroupMenu-' + g);
+      if (m) m.classList.remove('active');
+    }
+  });
 });
 function toggleTheme() {
   const root = document.documentElement;
