@@ -7138,6 +7138,26 @@ function updateCutAiFileListStatus_() {
 // 실제 가져오기 실행 — 파일별로 이미지/PDF는 AI 비전 분석을, 스프레드시트는 표 그대로 파싱을 순서대로
 // 처리한다(동시에 여러 건을 AI에 보내면 팀 전체가 공유하는 Groq 분당 토큰 한도에 걸리기 쉬워서, 안전하게
 // 하나씩 처리하고 진행 상황을 계속 화면에 보여준다 — 사용자 쪽 요청사항).
+// 클라우드 AI(Groq)는 조직 전체가 나눠 쓰는 분당 토큰 한도(TPM)가 있어서, 이미지를 여러 장 연달아
+// 분석시키면 중간에 "사용량이 많아 N초 후 다시 시도해달라"는 429 응답이 올 수 있다. 예전에는 그 이미지
+// 하나만 실패 처리하고 넘어갔는데, 그러면 여러 장을 올릴 때마다 자꾸 실패가 섞여 나와 불편하다는 피드백이
+// 있어 — 이 에러 문구(Groq가 알려주는 "in 49.5s" 같은 안내)에서 대기시간을 읽어 그만큼 자동으로 기다렸다가
+// 같은 이미지를 다시 시도하도록 바꿨다(최대 2번, 매번 실패 사유를 화면에 그대로 보여줌).
+function parseRateLimitWaitSeconds_(message) {
+  if (!message || !/rate limit/i.test(message)) return null;
+  const m = String(message).match(/in\s+([\d.]+)\s*s\b/i);
+  return m ? Math.min(65, parseFloat(m[1]) + 1) : 15; // 안내된 초를 못 찾으면 기본 15초 대기
+}
+function withRateLimitRetry_(callFn, statusEl, label, retriesLeft) {
+  retriesLeft = (retriesLeft == null) ? 2 : retriesLeft;
+  return callFn().then(data => {
+    const waitSec = data && data.error ? parseRateLimitWaitSeconds_(data.error) : null;
+    if (waitSec == null || retriesLeft <= 0) return data;
+    statusEl.textContent += `\n⏳ "${label}" 클라우드 AI 사용량이 많아 ${Math.ceil(waitSec)}초 후 자동으로 다시 시도합니다…`;
+    return new Promise(resolve => setTimeout(resolve, waitSec * 1000))
+      .then(() => withRateLimitRetry_(callFn, statusEl, label, retriesLeft - 1));
+  });
+}
 function runCutAiImport_() {
   const files = Array.from(document.getElementById('cai-files').files || []);
   if (!files.length) { showToast('스토리보드 파일을 선택하세요'); return; }
@@ -7178,7 +7198,7 @@ function runCutAiImport_() {
     if (isPdf) {
       return renderPdfToImages_(file).then(images => runSequential(images, (imgDataUrl, pageIdx) => {
         statusEl.textContent = `시작: ${startedAt.toLocaleTimeString('ko-KR')} · "${file.name}" ${pageIdx + 1}/${images.length}페이지 분석 중…`;
-        return callVisionAiWithFallbackChoice_(buildCutSplitPrompt_(context), imgDataUrl).then(data => {
+        return withRateLimitRetry_(() => callVisionAiWithFallbackChoice_(buildCutSplitPrompt_(context), imgDataUrl), statusEl, `${file.name} ${pageIdx + 1}페이지`).then(data => {
           if (data.error) throw new Error(data.error);
           appendCuts(parseCutAiReply_(data.reply), 'ai');
           renderCuts(); queueAutoSave();
@@ -7186,7 +7206,9 @@ function runCutAiImport_() {
       })).catch(err => { statusEl.textContent += `\n⚠️ "${file.name}" PDF를 읽지 못했습니다: ${err.message}`; });
     }
     if (isImage) {
-      return resizeImageFile_(file).then(({ dataUrl }) => callVisionAiWithFallbackChoice_(buildCutSplitPrompt_(context), dataUrl)).then(data => {
+      return resizeImageFile_(file).then(({ dataUrl }) =>
+        withRateLimitRetry_(() => callVisionAiWithFallbackChoice_(buildCutSplitPrompt_(context), dataUrl), statusEl, file.name)
+      ).then(data => {
         if (data.error) throw new Error(data.error);
         appendCuts(parseCutAiReply_(data.reply), 'ai');
         renderCuts(); queueAutoSave();
