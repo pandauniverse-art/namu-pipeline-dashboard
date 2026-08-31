@@ -1158,6 +1158,9 @@
 <script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore-compat.js"></script>
+<!-- 구글 드라이브 업로드용 액세스 토큰을 받아오는 Google Identity Services(GIS) 라이브러리.
+     getDriveAccessToken_()에서 window.google.accounts.oauth2를 쓴다. -->
+<script src="https://accounts.google.com/gsi/client" async defer></script>
 <script>
 // ---------- 파이프라인 단계 정의 (나무씨크리에이티브 내부 파이프라인 문서 기준) ----------
 const STAGES = [
@@ -1362,41 +1365,54 @@ function callAiProxy_(url, payload) {
 // 비어있는 동안은 업로드 버튼을 눌러도 안내 메시지만 뜨고 실제로는 아무 일도 일어나지 않는다.
 const DRIVE_UPLOAD_FOLDER_ID_ = '1xCXG8UGDvAAnP-nFh75EsTiQ_3OWYptU'; // 나무씨크리에이티브 작업영상 저장용 폴더
 const DRIVE_UPLOAD_SCOPE_ = 'https://www.googleapis.com/auth/drive.file'; // 이 앱이 만든 파일에만 접근하는 최소 권한 범위
+// 구글 클라우드 콘솔 "API 및 서비스 > 사용자 인증 정보"에 있는 "Web client (auto created by Google
+// Service)"의 클라이언트 ID. 아래 getDriveAccessToken_()에서 구글 드라이브 접근 토큰을 받아올 때만 쓰이고,
+// Firebase 로그인 자체에는 영향 없음. 이 값은 브라우저 코드에 그대로 노출돼도 되는 공개 식별자다(비밀
+// 값이 아님 — Firebase의 apiKey와 같은 성격).
+const GOOGLE_OAUTH_CLIENT_ID_ = '446389809329-trusattsuebm2i8mettd1vdqq5gh1g7q.apps.googleusercontent.com';
 // 로그인할 때 받아둔 구글 OAuth 액세스 토큰(드라이브 API 호출용, Firebase ID 토큰과는 다른 것). 새로고침하면
 // 사라지고, 유효시간도 대략 1시간이라 만료되면 다시 받아와야 한다 — 아래 getDriveAccessToken_()이 그 처리를 담당.
 let driveAccessToken_ = null;
 let driveAccessTokenExpiresAt_ = 0;
-function rememberDriveAccessTokenFromResult_(result) {
-  const cred = firebase.auth.GoogleAuthProvider.credentialFromResult(result);
-  if (cred && cred.accessToken) {
-    driveAccessToken_ = cred.accessToken;
-    driveAccessTokenExpiresAt_ = Date.now() + 55 * 60 * 1000; // 보통 1시간 유효 — 여유를 두고 55분으로 잡음
-  } else {
-    // 로그인/재인증 자체는 성공했는데 구글 드라이브용 액세스 토큰이 안 실려온 경우 — 원인 파악용으로
-    // 콘솔에 남겨둔다(예: 사용자가 동의 화면에서 드라이브 접근 권한 체크를 해제했거나, 구글 클라우드
-    // 콘솔의 OAuth 동의 화면에 이 계정이 테스트 사용자로 등록되어 있지 않은 경우 등).
-    console.warn('구글 드라이브 액세스 토큰 없음 — cred:', cred, '/ result:', result);
-  }
-}
-// 지금 갖고 있는 토큰이 아직 유효하면 그대로 쓰고, 없거나 만료됐으면(새로고침 직후 등) 로그인 팝업을 한 번
-// 더 띄워서 새로 받아온다. 이미 한 번 동의한 권한이라 보통 계정 선택 정도로 빠르게 끝난다.
-// 원래는 reauthenticateWithPopup()을 썼는데, 이미 로그인된 계정을 다시 인증할 때는 (신원 확인 자체는
-// 성공해도) 결과에 구글 OAuth 액세스 토큰이 아예 빠져서 돌아오는 경우가 있었다(select_account를
-// 강제해도 마찬가지). 구글/파이어베이스 공식 문서에서 "액세스 토큰을 확실히 받는 방법"으로 안내하는
-// 것도 reauthenticateWithPopup이 아니라 signInWithPopup 쪽이라, 여기서도 같은 계정으로 signInWithPopup을
-// 다시 호출하는 방식으로 바꿨다 — 이미 로그인된 같은 계정이면 세션이 끊기지 않고 토큰만 새로 받아온다.
+// 구글 드라이브 액세스 토큰은 Firebase의 signInWithPopup/reauthenticateWithPopup이 아니라 구글이 별도로
+// 제공하는 Google Identity Services(GIS) 라이브러리로 받아온다. 원래는 Firebase 로그인 팝업에서 같이
+// 받으려 했는데, 최근 크롬의 Cross-Origin-Opener-Policy 정책 때문에 "팝업이 닫혔는지" 감지 자체가 막혀서
+// (콘솔에 "Cross-Origin-Opener-Policy policy would block the window.closed call" 경고가 뜸) 로그인/재인증
+// 자체는 성공해도 결과에 액세스 토큰이 아예 안 실려오는 문제가 있었다 — select_account를 강제해도,
+// reauthenticateWithPopup 대신 signInWithPopup을 써도 동일하게 재현됨. GIS는 구글이 이런 브라우저 변화에
+// 맞춰 계속 관리하는 별도 라이브러리라 이 문제에서 자유롭다. index.html 상단에서
+// <script src="https://accounts.google.com/gsi/client">를 미리 불러와둬야 동작한다.
+let driveTokenClient_ = null;
 function getDriveAccessToken_() {
   if (driveAccessToken_ && Date.now() < driveAccessTokenExpiresAt_) return Promise.resolve(driveAccessToken_);
-  const provider = new firebase.auth.GoogleAuthProvider();
-  provider.setCustomParameters({ hd: ALLOWED_EMAIL_DOMAIN, prompt: 'select_account' });
-  provider.addScope(DRIVE_UPLOAD_SCOPE_);
-  return fbAuth.signInWithPopup(provider).then(result => {
-    rememberDriveAccessTokenFromResult_(result);
-    if (!driveAccessToken_) {
-      console.error('구글 드라이브 액세스 토큰을 못 받아옴. signInWithPopup 결과:', result);
-      throw new Error('구글 드라이브 접근 권한을 가져오지 못했습니다. 브라우저 콘솔(F12)에 찍힌 상세 로그를 관리자에게 전달해주세요.');
+  return new Promise((resolve, reject) => {
+    if (!window.google || !google.accounts || !google.accounts.oauth2) {
+      reject(new Error('구글 인증 라이브러리를 아직 불러오지 못했습니다. 페이지를 새로고침한 뒤 다시 시도해주세요.'));
+      return;
     }
-    return driveAccessToken_;
+    if (!driveTokenClient_) {
+      driveTokenClient_ = google.accounts.oauth2.initTokenClient({
+        client_id: GOOGLE_OAUTH_CLIENT_ID_,
+        scope: DRIVE_UPLOAD_SCOPE_,
+        hint: (fbAuth.currentUser && fbAuth.currentUser.email) || undefined,
+        callback: () => {}, // requestAccessToken 호출마다 아래에서 그때그때 다시 지정해서 씀
+      });
+    }
+    driveTokenClient_.callback = (tokenResponse) => {
+      if (tokenResponse && tokenResponse.access_token) {
+        driveAccessToken_ = tokenResponse.access_token;
+        // expires_in(초)이 오면 그걸 쓰고, 혹시 없으면 보통 1시간 유효하다고 보고 55분으로 여유를 둔다.
+        const ttlMs = ((tokenResponse.expires_in || 3300) - 60) * 1000;
+        driveAccessTokenExpiresAt_ = Date.now() + Math.max(ttlMs, 60000);
+        resolve(driveAccessToken_);
+      } else {
+        reject(new Error('구글 드라이브 접근 권한을 가져오지 못했습니다.'));
+      }
+    };
+    driveTokenClient_.error_callback = (err) => {
+      reject(new Error('구글 드라이브 권한 요청이 취소되었거나 실패했습니다' + (err && err.type ? ' (' + err.type + ')' : '') + '.'));
+    };
+    driveTokenClient_.requestAccessToken();
   });
 }
 // 구글 드라이브 Resumable Upload API로 영상 파일을 올린다. 서버(Vercel/Firestore)를 거치지 않고
@@ -1943,17 +1959,12 @@ function renderTrash() {
   }
 }
 // ---------- 로그인 (Google, namucreative.com 계정만 허용) ----------
+// 구글 드라이브 접근 권한은 이제 이 로그인 팝업이 아니라 별도의 GIS 라이브러리(getDriveAccessToken_
+// 참고)로 그때그때 받아오므로, 여기서는 신원 확인(로그인)만 신경 쓰면 된다.
 function signInWithGoogle() {
   const provider = new firebase.auth.GoogleAuthProvider();
-  // prompt: 'select_account' 없이는 이미 로그인된 세션을 구글이 조용히(silent) 재사용해버려서, 이 경우
-  // Firebase가 돌려주는 결과에 OAuth 액세스 토큰이 아예 안 담기는 경우가 있었다(구글 드라이브 업로드가
-  // "접근 권한을 가져오지 못했습니다" 오류로 실패하던 원인). 계정 선택 단계를 한 번 거치게 강제해서
-  // 매번 정상적으로 액세스 토큰을 받아오게 한다.
-  provider.setCustomParameters({ hd: ALLOWED_EMAIL_DOMAIN, prompt: 'select_account' });
-  provider.addScope(DRIVE_UPLOAD_SCOPE_); // 영상 파일을 구글 드라이브로 올릴 때 필요한 권한을 로그인 시점에 같이 받아둔다
-  fbAuth.signInWithPopup(provider).then(result => {
-    rememberDriveAccessTokenFromResult_(result);
-  }).catch(err => {
+  provider.setCustomParameters({ hd: ALLOWED_EMAIL_DOMAIN });
+  fbAuth.signInWithPopup(provider).catch(err => {
     document.getElementById('authGateMsg').textContent = '로그인 실패: ' + err.message;
   });
 }
