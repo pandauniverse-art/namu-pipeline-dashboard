@@ -443,6 +443,7 @@
   <button class="tab-btn" data-tab="aiqueue">작업 진행 현황</button>
   <button class="tab-btn" data-tab="team">담당자별 보기</button>
   <button class="tab-btn" data-tab="assets">자료 보관함</button>
+  <button class="tab-btn" data-tab="cutlist">컷리스트</button>
   <button class="tab-btn" data-tab="schedule">일정 계산기</button>
   <button class="tab-btn" data-tab="calendar">달력</button>
   <button class="tab-btn" data-tab="guide">파이프라인 가이드</button>
@@ -798,6 +799,29 @@
     <div class="grid" id="assetGrid" style="grid-template-columns: repeat(auto-fill, minmax(220px,1fr));"></div>
     <div class="empty-state" id="assetEmpty" style="display:none">등록된 자료가 없습니다. '+ 자료 추가'로 시작하세요.</div>
   </section>
+  <!-- CUT LIST (프로젝트별 스토리보드 컷 목록: 수동 입력 또는 스토리보드 이미지/PDF/스프레드시트에서 자동 생성) -->
+  <section class="tabpanel" id="tab-cutlist">
+    <div class="note-box" style="margin-top:0; margin-bottom:16px;">
+      스토리보드(콘티)를 컷 단위 표로 관리합니다. 아래 "스토리보드로 자동 생성"에 이미지·PDF·이미 정리된 스프레드시트(엑셀/CSV)를 올리면 컷을 자동으로 채워주고,
+      이후 표에서 바로 값을 고치거나 행을 추가·삭제할 수 있습니다(자동 생성 없이 "+ 컷 직접 추가"로 처음부터 손으로 입력해도 됩니다).
+      기본은 클라우드 AI(지금 이미지 자료 자동분석과 같은 방식)로 분석하지만, 스토리보드에 기밀(NDA) 내용이 있으면 "스토리보드로 자동 생성" 창에서 로컬 AI 서버를 대신 쓰도록 설정할 수 있습니다.
+    </div>
+    <div class="filter-row">
+      <button class="primary" onclick="openCutAiImportModal_()">🎬 스토리보드로 자동 생성</button>
+      <button type="button" onclick="addCut_()">+ 컷 직접 추가</button>
+      <select id="cutProjectFilter" onchange="renderCuts()"><option value="">전체 프로젝트</option></select>
+      <input type="text" id="cutKeyword" placeholder="컷 번호/설명/메모 검색" oninput="renderCutsDebounced_()" style="flex:1; min-width:160px;">
+      <button type="button" onclick="exportCutsCsv_()">CSV로 내보내기</button>
+    </div>
+    <datalist id="cutShotTypeList">
+      <option value="익스트림 롱샷"><option value="롱샷"><option value="풀샷"><option value="미디엄샷"><option value="클로즈업"><option value="익스트림 클로즈업">
+    </datalist>
+    <datalist id="cutCameraMoveList">
+      <option value="고정"><option value="팬"><option value="틸트"><option value="줌인"><option value="줌아웃"><option value="트래킹"><option value="크레인"><option value="핸드헬드">
+    </datalist>
+    <div id="cutGroups"></div>
+    <div class="empty-state" id="cutEmpty" style="display:none">등록된 컷이 없습니다. "스토리보드로 자동 생성" 또는 "+ 컷 직접 추가"로 시작하세요.</div>
+  </section>
   <!-- CALENDAR (실제 달력 날짜 기준 마감일 뷰) -->
   <section class="tabpanel" id="tab-calendar">
     <div class="note-box" style="margin-top:0; margin-bottom:16px;">
@@ -985,6 +1009,77 @@
       <select id="sp-dependson" multiple style="height:110px;" onchange="syncScheduleDependsOn(this)"></select>
     </div>
     <button onclick="deleteScheduleTaskFromPanel()" style="width:100%; margin-top:6px;">이 작업 삭제</button>
+  </div>
+</div>
+<!-- 컷리스트: 표에 없는 부가 항목(썸네일/연결 프로젝트/연결 자료/메모) 편집용 사이드 패널 -->
+<div class="side-panel-backdrop" id="cutSidePanelBackdrop">
+  <div class="side-panel">
+    <button class="side-close" onclick="closeCutPanel_()">✕</button>
+    <h3 id="cutPanelTitle">컷 상세</h3>
+    <input type="hidden" id="cp-id">
+    <div class="field"><label>연결 프로젝트</label><select id="cp-project" onchange="updateCutField(document.getElementById('cp-id').value,'projectId',this.value)"></select></div>
+    <div class="field">
+      <label>대표 이미지(썸네일)</label>
+      <div id="cp-thumb-wrap" style="width:100%; aspect-ratio:16/9; background:var(--grid); border-radius:6px; overflow:hidden; display:flex; align-items:center; justify-content:center; margin-bottom:8px;">
+        <span id="cp-thumb-placeholder" style="font-size:12px; color:var(--text-muted);">미리보기 없음</span>
+        <img id="cp-thumb-img" src="" style="width:100%; height:100%; object-fit:cover; display:none;">
+      </div>
+      <input type="file" id="cp-thumb-file" accept="image/*" onchange="handleCutThumbFileUpload_()">
+    </div>
+    <div class="field"><label>메모</label><textarea id="cp-notes" rows="3" onchange="updateCutField(document.getElementById('cp-id').value,'notes',this.value)"></textarea></div>
+    <div class="field">
+      <label>연결된 자료 (이미지/영상 라이브러리)</label>
+      <div id="cp-linked-assets" style="font-size:12px; color:var(--text-secondary); margin-bottom:6px;"></div>
+      <button type="button" onclick="openCutAssetPicker_()" style="width:100%;">자료 연결 관리</button>
+    </div>
+    <button onclick="deleteCutFromPanel_()" style="width:100%; margin-top:6px;">이 컷 삭제</button>
+  </div>
+</div>
+<!-- 컷리스트: 연결된 프로젝트의 이미지/영상 자료를 체크박스로 연결/해제하는 피커 -->
+<div class="modal-backdrop" id="cutAssetPickerBackdrop">
+  <div class="modal" style="max-width:420px;">
+    <h2>연결 자료 — <span id="capCutName"></span></h2>
+    <div style="font-size:12px; color:var(--text-muted); margin-bottom:10px;">체크한 자료가 이 컷에 연결됩니다. 자료 보관함에 등록된 이미지/영상만 선택할 수 있어요.</div>
+    <div id="capList" style="max-height:50vh; overflow-y:auto; display:flex; flex-direction:column; gap:4px;"></div>
+    <div class="modal-footer">
+      <button class="primary" onclick="closeCutAssetPicker_()">닫기</button>
+    </div>
+  </div>
+</div>
+<!-- 컷리스트: 스토리보드(이미지/PDF/스프레드시트)를 올려서 컷을 자동으로 생성하는 모달 -->
+<div class="modal-backdrop" id="cutAiImportModalBackdrop">
+  <div class="modal" style="max-width:520px;">
+    <h2>스토리보드로 컷리스트 자동 생성</h2>
+    <div style="font-size:12px; color:var(--text-muted); margin-bottom:10px;">
+      스토리보드 이미지(JPG/PNG), PDF, 또는 이미 컷이 정리된 스프레드시트(엑셀/CSV)를 올리세요. 이미지/PDF는 AI가 컷을 나눠서 분석하고,
+      스프레드시트는 AI 없이 표 내용을 그대로 컷으로 불러옵니다. 여러 파일을 한 번에 올릴 수 있습니다.
+    </div>
+    <div class="form-grid">
+      <div style="grid-column:1/-1"><label>연결 프로젝트</label>
+        <select id="cai-project"></select>
+      </div>
+      <div style="grid-column:1/-1"><label>파일 선택</label>
+        <input type="file" id="cai-files" accept="image/*,application/pdf,.xlsx,.xls,.csv" multiple>
+      </div>
+    </div>
+    <button type="button" class="advanced-toggle" onclick="toggleCutAiLocalSettings_()">로컬 AI 사용 설정 ▾</button>
+    <div class="form-grid advanced-fields" id="cai-local-fields" style="display:none;">
+      <div style="grid-column:1/-1;">
+        <label><input type="checkbox" id="cai-local-enabled" onchange="saveCutAiLocalSettings_()"> 로컬 AI 서버 사용(클라우드로 이미지를 보내지 않음, 기밀 스토리보드용)</label>
+      </div>
+      <div style="grid-column:1/-1;"><label>로컬 AI 주소 (OpenAI 호환 /v1/chat/completions 형식, 예: LM Studio·Ollama)</label>
+        <input type="text" id="cai-local-endpoint" placeholder="예: http://localhost:1234/v1/chat/completions" onchange="saveCutAiLocalSettings_()">
+      </div>
+      <div style="grid-column:1/-1;"><label>모델 이름 (로컬 서버에 올려둔 비전 모델 이름)</label>
+        <input type="text" id="cai-local-model" placeholder="예: qwen2-vl-7b-instruct" onchange="saveCutAiLocalSettings_()">
+      </div>
+      <div class="note-box" style="grid-column:1/-1; margin:0;">이 설정은 이 브라우저(이 컴퓨터)에만 저장되는 개인 설정입니다. 로컬 서버가 이 사이트 주소에서의 요청을 허용(CORS)하고 있어야 동작하며, 서버·모델마다 동작 여부가 다를 수 있습니다.</div>
+    </div>
+    <div id="cai-status" style="font-size:12px; color:var(--text-muted); margin-top:10px; white-space:pre-wrap;"></div>
+    <div class="modal-footer">
+      <button onclick="closeCutAiImportModal_()">닫기</button>
+      <button class="primary" id="cai-start-btn" onclick="runCutAiImport_()">분석 시작</button>
+    </div>
   </div>
 </div>
 <!-- 자료 보관함: 이미지/영상/프롬프트 추가 모달 -->
@@ -1256,6 +1351,7 @@ function assigneePillClass(v) { return ASSIGNEE_PILL_CLASS[v] || 'pending'; }
 let projects = [];
 let aiTasks = [];
 let assets = []; // 자료 보관함: 레퍼런스/AI 학습용 이미지 등
+let cuts = []; // 컷리스트: 프로젝트별 스토리보드 컷 목록(수동 입력 또는 스토리보드 이미지/PDF/스프레드시트에서 AI·자동 생성)
 let activityLog = []; // 최근 활동 로그 (상태 변경/보류/AI 자동 반영 등 기록, 최대 ACTIVITY_LOG_MAX건만 보관)
 let trash = []; // 휴지통: 삭제된 프로젝트/작업/자료의 스냅샷을 30일간 보관 (아래 "휴지통" 섹션 참고)
 let calendarNotes = []; // 달력의 날짜별 자유 메모 (프로젝트 마감일과 별개로, 날짜 칸에 직접 텍스트를 적어두는 용도)
@@ -1374,8 +1470,8 @@ const db = firebase.firestore();
 // 대신 이 방식을 쓴다 — Vercel 프록시가 서버 쪽에서만 GitHub API를 호출하므로 토큰이 브라우저에 노출되지 않는다.
 // 이미지가 수백~수천 장으로 늘어나도 로그인할 때 Firestore에서 받아오는 데이터양은 가벼운 텍스트 수준으로
 // 유지되고, 실제 이미지 픽셀 데이터는 화면에 보일 때만 그 CDN 주소로 브라우저가 지연 로딩한다.)
-const COLLECTIONS = ['projects', 'aiTasks', 'scheduleTasks', 'assets', 'activityLog', 'trash', 'calendarNotes', 'users', 'tagCategories', 'tagAssignments', 'reports'];
-const COLLECTION_LABEL_ = { projects: '프로젝트', aiTasks: '작업', scheduleTasks: '일정 계산기 작업', assets: '자료', activityLog: '활동 로그', trash: '휴지통', calendarNotes: '달력 일정', users: '팀원', tagCategories: '태그 카테고리', tagAssignments: '태그 분류', reports: '리포트 이력' };
+const COLLECTIONS = ['projects', 'aiTasks', 'scheduleTasks', 'assets', 'cuts', 'activityLog', 'trash', 'calendarNotes', 'users', 'tagCategories', 'tagAssignments', 'reports'];
+const COLLECTION_LABEL_ = { projects: '프로젝트', aiTasks: '작업', scheduleTasks: '일정 계산기 작업', assets: '자료', cuts: '컷리스트', activityLog: '활동 로그', trash: '휴지통', calendarNotes: '달력 일정', users: '팀원', tagCategories: '태그 카테고리', tagAssignments: '태그 분류', reports: '리포트 이력' };
 const CLOUD_FUNCTIONS_READY = false; // 자동 이메일점검 등 일부 기능은 Blaze(카드 등록) 전환 후 활성화됩니다
 const AI_PROXY_URL = 'https://namu-ai-proxy.vercel.app/api/ai-input'; // AI 입력 기능은 Vercel 서버리스 함수를 통해 Groq API와 연결됩니다
 const IMAGE_UPLOAD_PROXY_URL = 'https://namu-ai-proxy.vercel.app/api/upload-image'; // 이미지 자료는 이 Vercel 서버리스 함수를 통해 GitHub 저장소에 커밋된다
@@ -1520,9 +1616,9 @@ const AUTO_SAVE_RETRY_MAX_MS_ = 60000;
 let autoSaveSuppressed = true; // 초기 로딩 중에는 자동저장을 잠깐 막아서 방금 불러온 데이터를 그대로 되쏘는 것을 방지
 let hasUnsavedChanges_ = false; // 900ms 자동저장 대기/진행 중인 변경사항이 있는지 — 이 사이에 탭을 닫으면 사라질 수 있어 경고에 사용
 let unsavedGeneration_ = 0; // queueAutoSave가 호출될 때마다 증가 — 저장이 진행되는 도중에 새 변경이 또 들어온 경우를 구분하기 위함
-let deletedIds = {projects: [], aiTasks: [], scheduleTasks: [], assets: [], activityLog: [], trash: [], calendarNotes: [], users: [], tagCategories: [], tagAssignments: [], reports: []}; // 아직 서버에 삭제 반영 안 된 id들
-let lastFlushedAt = {projects: 0, aiTasks: 0, scheduleTasks: 0, assets: 0, activityLog: 0, trash: 0, calendarNotes: 0, users: 0, tagCategories: 0, tagAssignments: 0, reports: 0}; // 컬렉션별로 마지막에 서버에 반영한 시점 (이 이후 updatedAt인 항목만 다시 씀)
-let snapshotsReady = {projects: false, aiTasks: false, scheduleTasks: false, assets: false, activityLog: false, trash: false, calendarNotes: false, users: false, tagCategories: false, tagAssignments: false, reports: false};
+let deletedIds = {projects: [], aiTasks: [], scheduleTasks: [], assets: [], cuts: [], activityLog: [], trash: [], calendarNotes: [], users: [], tagCategories: [], tagAssignments: [], reports: []}; // 아직 서버에 삭제 반영 안 된 id들
+let lastFlushedAt = {projects: 0, aiTasks: 0, scheduleTasks: 0, assets: 0, cuts: 0, activityLog: 0, trash: 0, calendarNotes: 0, users: 0, tagCategories: 0, tagAssignments: 0, reports: 0}; // 컬렉션별로 마지막에 서버에 반영한 시점 (이 이후 updatedAt인 항목만 다시 씀)
+let snapshotsReady = {projects: false, aiTasks: false, scheduleTasks: false, assets: false, cuts: false, activityLog: false, trash: false, calendarNotes: false, users: false, tagCategories: false, tagAssignments: false, reports: false};
 let currentUser = null;
 function isAutoSaveConfigured() {
   return !!currentUser;
@@ -1689,13 +1785,13 @@ function isAnyModalOpen_() {
   return !!document.querySelector('.modal-backdrop.active, .side-panel-backdrop.active, .ai-panel.active');
 }
 const COLLECTION_VAR = {
-  projects: () => projects, aiTasks: () => aiTasks, scheduleTasks: () => scheduleTasks, assets: () => assets,
+  projects: () => projects, aiTasks: () => aiTasks, scheduleTasks: () => scheduleTasks, assets: () => assets, cuts: () => cuts,
   activityLog: () => activityLog, trash: () => trash, calendarNotes: () => calendarNotes, users: () => users,
   tagCategories: () => tagCategories, tagAssignments: () => tagAssignments, reports: () => reports,
 };
 const COLLECTION_SETTER = {
   projects: (v) => { projects = v; }, aiTasks: (v) => { aiTasks = v; },
-  scheduleTasks: (v) => { scheduleTasks = v; }, assets: (v) => { assets = v; },
+  scheduleTasks: (v) => { scheduleTasks = v; }, assets: (v) => { assets = v; }, cuts: (v) => { cuts = v; },
   activityLog: (v) => { activityLog = v; }, trash: (v) => { trash = v; }, calendarNotes: (v) => { calendarNotes = v; },
   users: (v) => { users = v; },
   tagCategories: (v) => { tagCategories = v; }, tagAssignments: (v) => { tagAssignments = v; },
@@ -1792,7 +1888,7 @@ function doAutoSave() {
   }
   Promise.all(batches.map(b => b.commit())).then(() => {
     COLLECTIONS.forEach(coll => { lastFlushedAt[coll] = flushedAt; });
-    deletedIds = {projects: [], aiTasks: [], scheduleTasks: [], assets: [], activityLog: [], trash: [], calendarNotes: [], users: [], tagCategories: [], tagAssignments: [], reports: []};
+    deletedIds = {projects: [], aiTasks: [], scheduleTasks: [], assets: [], cuts: [], activityLog: [], trash: [], calendarNotes: [], users: [], tagCategories: [], tagAssignments: [], reports: []};
     // 저장이 진행되는 동안 새 변경이 또 들어왔다면(unsavedGeneration_이 더 증가했다면) 아직 저장 안 된 게
     // 남아있는 것이므로 플래그를 내리지 않는다 — 곧 다시 예약된 doAutoSave가 그 변경까지 마저 저장한다.
     if (unsavedGeneration_ === startGen) hasUnsavedChanges_ = false;
@@ -1815,11 +1911,12 @@ function doAutoSave() {
 // 30일이 지나면 다음 동기화 때 자동으로 완전히 삭제되고(purgeExpiredTrash_), 그전에도 "휴지통 비우기"로
 // 언제든 즉시 비울 수 있다. 실수로 지운 항목은 30일 안에 "복구"를 누르면 원래 있던 자리로 그대로 돌아간다.
 const TRASH_RETENTION_MS = 30 * 24 * 60 * 60 * 1000; // 30일
-const TRASH_COLLECTION_LABELS_ = { projects: '프로젝트', aiTasks: '작업', scheduleTasks: '일정 계산기 작업', assets: '자료', calendarNotes: '캘린더 일정' };
+const TRASH_COLLECTION_LABELS_ = { projects: '프로젝트', aiTasks: '작업', scheduleTasks: '일정 계산기 작업', assets: '자료', cuts: '컷리스트', calendarNotes: '캘린더 일정' };
 function trashEntryDisplayName_(collectionName, data) {
   if (collectionName === 'aiTasks') return data.title || '(제목 없음)';
   if (collectionName === 'assets' && data.type === 'prompt') return data.name || (data.text || '').slice(0, 24) || '(프롬프트)';
   if (collectionName === 'calendarNotes') return (data.text || '').slice(0, 30) || '(내용 없음)';
+  if (collectionName === 'cuts') return `컷 ${data.cutNo || '?'}${data.description ? ' - ' + data.description.slice(0, 20) : ''}`;
   return data.name || data.title || '(이름 없음)';
 }
 // item을 통째로 스냅샷 떠서 휴지통에 넣는다. 호출부에서는 여전히 원래 컬렉션 배열에서 item을 빼고
@@ -3298,6 +3395,7 @@ function renderAll() {
   renderScheduleTasks();
   renderGuide();
   renderAssets();
+  renderCuts();
   renderActivityLog();
   renderReportHistory_();
   renderProfitability();
@@ -6304,7 +6402,7 @@ function exportData() {
   // 관리자였다면), 화면에서 리포트 이력 자체를 관리자 이상만 볼 수 있게 막아둔 것과 같은 기준으로
   // 내보내기에서도 사용자(member) 등급에게는 아예 빼고 내보낸다.
   const exportReports = canViewReportHistory_() ? reports : [];
-  const blob = new Blob([JSON.stringify({projects: exportProjects, aiTasks, idCounter, scheduleTasks, scheduleIdCounter, assets, activityLog, trash, calendarNotes, users, tagCategories, tagAssignments, reports: exportReports}, null, 2)], {type: 'application/json'});
+  const blob = new Blob([JSON.stringify({projects: exportProjects, aiTasks, idCounter, scheduleTasks, scheduleIdCounter, assets, cuts, activityLog, trash, calendarNotes, users, tagCategories, tagAssignments, reports: exportReports}, null, 2)], {type: 'application/json'});
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
@@ -6398,6 +6496,476 @@ function finishOnboardingTour() {
   document.getElementById('onboardingBackdrop').classList.remove('active');
 }
 function skipOnboardingTour() { finishOnboardingTour(); }
+// ============================================================
+// ---------- 컷리스트 (프로젝트별 스토리보드 컷 목록) ----------
+// 자료 보관함(assets)과 같은 방식으로 Firestore 컬렉션('cuts')에 실시간 동기화되는 개별 문서 목록이다.
+// 표(테이블) 형태로 프로젝트별 그룹으로 보여주고, 셀을 바로 고칠 수 있게 했다(일정 계산기 표와 동일한 UX).
+// 컷은 1) "+ 컷 직접 추가"로 손으로 하나씩 넣거나, 2) 스토리보드 이미지/PDF/스프레드시트를 올려
+// AI(또는 스프레드시트는 AI 없이 표 그대로)로 자동 생성한 뒤 표에서 다듬는 두 가지 방식을 모두 지원한다.
+// ============================================================
+const CUT_STATUS_OPTIONS_ = ['대기', '진행중', '완료', '보류'];
+function findCut_(id) { return cuts.find(c => c.id === id); }
+function updateCutField(id, field, value) {
+  const c = findCut_(id);
+  if (!c) return;
+  c[field] = value;
+  c.updatedAt = Date.now();
+  renderCuts();
+  queueAutoSave();
+}
+// 그룹(프로젝트)별 "+ 새 컷" 행에서 호출 — projectId를 생략하면 지금 선택된 프로젝트 필터를 그대로 따라간다.
+function addCut_(projectId) {
+  const filterSel = document.getElementById('cutProjectFilter');
+  const pid = (projectId !== undefined && projectId !== null) ? projectId : (filterSel ? filterSel.value : '');
+  const sameGroup = cuts.filter(c => (c.projectId || '') === (pid || ''));
+  const id = genId_('cut');
+  cuts.push({
+    id, projectId: pid || '', order: sameGroup.length ? Math.max(...sameGroup.map(c => c.order || 0)) + 1 : 1,
+    cutNo: String(sameGroup.length + 1), description: '', shotType: '', cameraMove: '', durationSec: 0,
+    status: CUT_STATUS_OPTIONS_[0], notes: '', thumbDataUrl: '', linkedAssetIds: [], sourceType: 'manual',
+    updatedAt: Date.now(),
+  });
+  renderCuts();
+  queueAutoSave();
+  setTimeout(() => {
+    const el = document.getElementById('cut-desc-' + id);
+    if (el) { el.focus(); }
+  }, 0);
+}
+function deleteCut_(id) {
+  const target = findCut_(id);
+  if (!target) return;
+  if (!confirm('이 컷을 삭제할까요? (휴지통으로 이동하며, 30일 안에는 복구할 수 있습니다)')) return;
+  moveToTrash_('cuts', target);
+  cuts = cuts.filter(c => c.id !== id);
+  deletedIds.cuts.push(id);
+  renderCuts();
+  renderTrash();
+  queueAutoSave();
+}
+function cutThumbCellHTML_(c) {
+  if (c.thumbDataUrl) {
+    return `<img src="${escapeHtml_(c.thumbDataUrl)}" loading="lazy" style="width:44px; height:44px; object-fit:cover; border-radius:4px; cursor:pointer;" onclick="openImageLightbox_('${jsStrAttr_(c.thumbDataUrl)}','${jsStrAttr_('컷 ' + (c.cutNo||''))}')">`;
+  }
+  return `<div style="width:44px; height:44px; border-radius:4px; background:var(--grid); display:flex; align-items:center; justify-content:center; font-size:16px; cursor:pointer;" onclick="openCutPanel_('${c.id}')" title="썸네일 추가(상세 열기)">🎬</div>`;
+}
+let cutKeywordDebounce_ = null;
+function renderCutsDebounced_() {
+  clearTimeout(cutKeywordDebounce_);
+  cutKeywordDebounce_ = setTimeout(renderCuts, 200);
+}
+function renderCuts() {
+  const filterSel = document.getElementById('cutProjectFilter');
+  if (!filterSel) return; // 컷리스트 탭 DOM이 아직 준비 안 됐으면(초기 로딩 등) 조용히 건너뜀
+  const cur = filterSel.value;
+  filterSel.innerHTML = '<option value="">전체 프로젝트</option>' +
+    projects.map(p => `<option value="${p.id}">${escapeHtml_(p.name)}</option>`).join('');
+  filterSel.value = cur;
+  const projectFilter = filterSel.value;
+  const keyword = (document.getElementById('cutKeyword').value || '').toLowerCase();
+  const emptyEl = document.getElementById('cutEmpty');
+  emptyEl.style.display = cuts.length ? 'none' : 'block';
+  // 프로젝트별로 그룹을 나눈다 — 실제로 컷이 있는 프로젝트만(등록 프로젝트가 수백 개여도 표가 그만큼
+  // 늘어나지 않게) + 프로젝트 미지정 컷은 "미지정" 그룹으로 마지막에 모은다.
+  const groupIds = Array.from(new Set(cuts.map(c => c.projectId || '')));
+  const orderedGroupIds = [
+    ...projects.map(p => p.id).filter(pid => groupIds.includes(pid)),
+    ...(groupIds.includes('') ? [''] : []),
+  ].filter(pid => !projectFilter || pid === projectFilter);
+  const groupsEl = document.getElementById('cutGroups');
+  groupsEl.innerHTML = orderedGroupIds.map(pid => {
+    const proj = projects.find(p => p.id === pid);
+    const groupLabel = proj ? proj.name : '(프로젝트 미지정)';
+    let rows = cuts.filter(c => (c.projectId || '') === pid);
+    if (keyword) {
+      rows = rows.filter(c => `${c.cutNo||''} ${c.description||''} ${c.notes||''}`.toLowerCase().indexOf(keyword) !== -1);
+    }
+    rows = rows.slice().sort((a, b) => (a.order || 0) - (b.order || 0));
+    const rowsHtml = rows.map((c, idx) => `<tr>
+      <td class="readonly-cell">${idx + 1}</td>
+      <td>${cutThumbCellHTML_(c)}</td>
+      <td><input value="${escapeHtml_(c.cutNo||'')}" style="width:64px;" onchange="updateCutField('${c.id}','cutNo',this.value)"></td>
+      <td><input id="cut-desc-${c.id}" value="${escapeHtml_(c.description||'')}" placeholder="장면/액션 설명" onchange="updateCutField('${c.id}','description',this.value)"></td>
+      <td><input value="${escapeHtml_(c.shotType||'')}" list="cutShotTypeList" style="width:96px;" onchange="updateCutField('${c.id}','shotType',this.value)"></td>
+      <td><input value="${escapeHtml_(c.cameraMove||'')}" list="cutCameraMoveList" style="width:96px;" onchange="updateCutField('${c.id}','cameraMove',this.value)"></td>
+      <td><input type="number" min="0" step="0.5" value="${c.durationSec||0}" style="width:60px;" onchange="updateCutField('${c.id}','durationSec',parseFloat(this.value)||0)"></td>
+      <td><select onchange="updateCutField('${c.id}','status',this.value)">${CUT_STATUS_OPTIONS_.map(s => `<option value="${s}" ${s===(c.status||CUT_STATUS_OPTIONS_[0])?'selected':''}>${s}</option>`).join('')}</select></td>
+      <td>
+        <button class="sched-row-open-btn" title="상세(썸네일/연결자료/메모)" onclick="openCutPanel_('${c.id}')">⋮</button>
+        <button class="sched-row-open-btn" title="삭제" onclick="deleteCut_('${c.id}')">✕</button>
+      </td>
+    </tr>`).join('');
+    return `<div class="card" style="margin-bottom:12px;">
+      <div style="display:flex; justify-content:space-between; align-items:baseline; margin-bottom:8px;">
+        <h3 style="margin:0; font-size:14px;">${escapeHtml_(groupLabel)}</h3>
+        <span style="font-size:12px; color:var(--text-muted);">${rows.length ? `컷 ${rows.length}개 · 총 ${rows.reduce((s,c)=>s+(c.durationSec||0),0)}초` : '컷 없음'}</span>
+      </div>
+      <div style="overflow-x:auto;">
+      <table class="sched-table">
+        <thead><tr><th>#</th><th>썸네일</th><th>컷</th><th>설명</th><th>샷 사이즈</th><th>카메라 무브먼트</th><th>길이(초)</th><th>상태</th><th></th></tr></thead>
+        <tbody>${rowsHtml}
+          <tr class="sched-ghost-row" onclick="addCut_('${pid}')"><td colspan="9">+ 새 컷</td></tr>
+        </tbody>
+      </table>
+      </div>
+    </div>`;
+  }).join('');
+  if (!orderedGroupIds.length && cuts.length) {
+    groupsEl.innerHTML = '<div class="empty-state">조건에 맞는 컷이 없습니다.</div>';
+  }
+}
+// CSV로 내보내기 — 지금 프로젝트 필터가 걸려있으면 그 프로젝트 컷만, 아니면 전체를 내보낸다.
+// 라이브러리 없이 브라우저 안에서 바로 텍스트를 만들어 다운로드한다(엑셀에서 바로 열림).
+function exportCutsCsv_() {
+  const filterSel = document.getElementById('cutProjectFilter');
+  const projectFilter = filterSel ? filterSel.value : '';
+  const rows = cuts.filter(c => !projectFilter || (c.projectId || '') === projectFilter)
+    .slice().sort((a, b) => (a.projectId||'').localeCompare(b.projectId||'') || (a.order||0)-(b.order||0));
+  if (!rows.length) { showToast('내보낼 컷이 없습니다'); return; }
+  const header = ['프로젝트', '컷', '설명', '샷사이즈', '카메라무브먼트', '길이(초)', '상태', '메모'];
+  const csvEscape = (v) => `"${String(v == null ? '' : v).replace(/"/g, '""')}"`;
+  const lines = [header.map(csvEscape).join(',')];
+  rows.forEach(c => {
+    const proj = projects.find(p => p.id === c.projectId);
+    lines.push([proj ? proj.name : '', c.cutNo, c.description, c.shotType, c.cameraMove, c.durationSec, c.status, c.notes].map(csvEscape).join(','));
+  });
+  const blob = new Blob(['﻿' + lines.join('\r\n')], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `컷리스트_${new Date().toISOString().slice(0,10)}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 5000);
+}
+// ---------- 컷 상세 사이드 패널 (표에 없는 항목: 연결 프로젝트/썸네일/메모/연결 자료) ----------
+function openCutPanel_(id) {
+  const c = findCut_(id);
+  if (!c) return;
+  document.getElementById('cp-id').value = id;
+  document.getElementById('cutPanelTitle').textContent = `컷 상세 ${c.cutNo ? '— ' + c.cutNo : ''}`;
+  const projSel = document.getElementById('cp-project');
+  projSel.innerHTML = '<option value="">(미지정)</option>' + projects.map(p => `<option value="${p.id}">${escapeHtml_(p.name)}</option>`).join('');
+  projSel.value = c.projectId || '';
+  document.getElementById('cp-notes').value = c.notes || '';
+  document.getElementById('cp-thumb-file').value = '';
+  setCutThumbPreview_(c.thumbDataUrl || '');
+  renderCutLinkedAssetsSummary_(c);
+  document.getElementById('cutSidePanelBackdrop').classList.add('active');
+}
+function closeCutPanel_() { document.getElementById('cutSidePanelBackdrop').classList.remove('active'); applyPendingRemoteIfAny(); }
+function deleteCutFromPanel_() {
+  const id = document.getElementById('cp-id').value;
+  if (!id) return;
+  closeCutPanel_();
+  deleteCut_(id);
+}
+function setCutThumbPreview_(dataUrl) {
+  const img = document.getElementById('cp-thumb-img');
+  const placeholder = document.getElementById('cp-thumb-placeholder');
+  if (dataUrl) {
+    img.src = dataUrl; img.style.display = 'block'; placeholder.style.display = 'none';
+  } else {
+    img.src = ''; img.style.display = 'none'; placeholder.style.display = 'block';
+  }
+}
+// 컷 대표 이미지는 스토리보드 원본 크롭본 등 사용자 로컬 이미지를 그대로 올리는 용도라(구글 드라이브에
+// 이미 올라간 영상이 아니므로) 영상 썸네일 모달처럼 재다운로드할 필요 없이 resizeImageFile_()만으로 끝난다.
+function handleCutThumbFileUpload_() {
+  const id = document.getElementById('cp-id').value;
+  const fileInput = document.getElementById('cp-thumb-file');
+  const file = fileInput.files[0];
+  if (!file || !id) return;
+  resizeImageFile_(file).then(({ dataUrl }) => {
+    setCutThumbPreview_(dataUrl);
+    updateCutField(id, 'thumbDataUrl', dataUrl);
+  }).catch(err => showToast('이미지를 불러오지 못했습니다: ' + err.message));
+}
+function renderCutLinkedAssetsSummary_(c) {
+  const wrap = document.getElementById('cp-linked-assets');
+  const linked = (c.linkedAssetIds || []).map(aid => assets.find(a => a.id === aid)).filter(Boolean);
+  wrap.textContent = linked.length ? linked.map(a => a.name || '(이름없음)').join(', ') : '연결된 자료 없음';
+}
+// ---------- 컷 ↔ 자료(이미지/영상) 연결 피커 ----------
+function openCutAssetPicker_() {
+  const id = document.getElementById('cp-id').value;
+  const c = findCut_(id);
+  if (!c) return;
+  document.getElementById('capCutName').textContent = c.cutNo ? `컷 ${c.cutNo}` : '(번호 없음)';
+  const linked = c.linkedAssetIds || [];
+  // 연결된 프로젝트가 있으면 그 프로젝트에 연결된 자료를 먼저 보여주고, 없으면 전체 이미지/영상 자료를 보여준다.
+  const candidates = assets.filter(a => (a.type === 'image' || a.type === 'video') &&
+    (!c.projectId || !(a.projects||[]).length || (a.projects||[]).includes(c.projectId)));
+  const listEl = document.getElementById('capList');
+  listEl.innerHTML = candidates.length ? candidates.map(a => `
+    <label style="display:flex; align-items:center; gap:8px; padding:4px 0;">
+      <input type="checkbox" value="${a.id}" ${linked.includes(a.id) ? 'checked' : ''} onchange="toggleCutLinkedAsset_('${id}', '${a.id}', this.checked)">
+      <span style="font-size:12px;">${a.type === 'image' ? '🖼' : '🎬'} ${escapeHtml_(a.name || '(이름없음)')}</span>
+    </label>`).join('') : '<div style="font-size:12px; color:var(--text-muted);">연결할 수 있는 이미지/영상 자료가 없습니다.</div>';
+  document.getElementById('cutAssetPickerBackdrop').classList.add('active');
+}
+function toggleCutLinkedAsset_(cutId, assetId, checked) {
+  const c = findCut_(cutId);
+  if (!c) return;
+  const set = new Set(c.linkedAssetIds || []);
+  if (checked) set.add(assetId); else set.delete(assetId);
+  c.linkedAssetIds = Array.from(set);
+  c.updatedAt = Date.now();
+  renderCutLinkedAssetsSummary_(c);
+  queueAutoSave();
+}
+function closeCutAssetPicker_() {
+  document.getElementById('cutAssetPickerBackdrop').classList.remove('active');
+  const c = findCut_(document.getElementById('cp-id').value);
+  if (c) renderCutLinkedAssetsSummary_(c);
+}
+// ---------- 스토리보드 → 컷 자동 생성 (이미지/PDF는 AI 비전 분석, 스프레드시트는 AI 없이 표 그대로) ----------
+// 컷 분석용 프롬프트: analyzeImageWithAi_()와 같은 "JSON만 답하라" 원칙을 그대로 따르되, 결과가 객체 하나가
+// 아니라 배열이라 findJsonObject_(reply, 'cuts')로 {"cuts":[...]} 형태의 래퍼 객체를 찾도록 설계했다.
+function buildCutSplitPrompt_() {
+  return '이 이미지는 영상 제작용 스토리보드(콘티)의 한 페이지야. 이 안에 그려진 각 컷(장면)을 왼쪽 위부터 순서대로 전부 나눠서 분석해줘. ' +
+    '다음 JSON 형식으로만, 다른 설명 없이 답해줘:\n' +
+    '{"cuts": [{"cutNo": "이미지에 컷 번호가 적혀 있으면 그대로, 없으면 순서대로 1부터", "description": "이 컷의 장면/액션을 25자 내외 한국어로 설명", ' +
+    '"shotType": "샷 사이즈(익스트림롱샷/롱샷/풀샷/미디엄샷/클로즈업/익스트림클로즈업 중 하나, 모르면 빈 문자열)", ' +
+    '"cameraMove": "카메라 무브먼트(고정/팬/틸트/줌인/줌아웃/트래킹/크레인/핸드헬드 등, 모르면 빈 문자열)", ' +
+    '"durationSec": 예상_길이_초_숫자_모르면_0, "notes": "대사·자막·효과 등 그 외 참고 메모"}]}\n' +
+    '이미지 한 장에 컷이 여러 개 그려져 있으면(보통 그렇습니다) 빠짐없이 배열에 전부 담아줘.';
+}
+// ---------- 로컬 AI(사내 컴퓨터에서 직접 돌리는 OpenAI 호환 서버) 설정 — 팀 공용 데이터가 아니라
+// 이 브라우저에만 남는 개인 설정이라 Firestore가 아니라 localStorage에 저장한다. ----------
+const CUT_AI_LOCAL_STORAGE_KEY_ = 'namu_cutAiLocalSettings_v1';
+function loadCutAiLocalSettings_() {
+  try {
+    return Object.assign({ enabled: false, endpoint: '', model: '' }, JSON.parse(localStorage.getItem(CUT_AI_LOCAL_STORAGE_KEY_) || '{}'));
+  } catch (e) { return { enabled: false, endpoint: '', model: '' }; }
+}
+function saveCutAiLocalSettings_() {
+  const settings = {
+    enabled: !!document.getElementById('cai-local-enabled').checked,
+    endpoint: document.getElementById('cai-local-endpoint').value.trim(),
+    model: document.getElementById('cai-local-model').value.trim(),
+  };
+  try { localStorage.setItem(CUT_AI_LOCAL_STORAGE_KEY_, JSON.stringify(settings)); } catch (e) {}
+}
+function toggleCutAiLocalSettings_() {
+  const el = document.getElementById('cai-local-fields');
+  el.style.display = el.style.display === 'none' ? '' : 'none';
+}
+// 클라우드(기존 Vercel 프록시 → Groq 비전 모델)와 로컬(사용자가 직접 지정한 OpenAI 호환 서버) 두 경로를
+// 하나의 인터페이스로 감싼다. 둘 다 { reply: "..." } 형태로 정규화해서 돌려주므로, 호출하는 쪽은 어느
+// 경로로 처리됐는지 신경 쓸 필요 없이 stripAiThinking_()/findJsonObject_()로 그대로 파싱하면 된다.
+function callVisionAiHybrid_(prompt, imageDataUrl) {
+  const local = loadCutAiLocalSettings_();
+  if (local.enabled && local.endpoint) {
+    return fetch(local.endpoint, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: local.model || 'default',
+        messages: [{ role: 'user', content: [
+          { type: 'text', text: prompt },
+          { type: 'image_url', image_url: { url: imageDataUrl } },
+        ] }],
+        temperature: 0.3,
+      }),
+    }).then(r => {
+      if (!r.ok) throw new Error(`로컬 AI 서버 응답 오류 (${r.status})`);
+      return r.json();
+    }).then(data => {
+      const reply = data && data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content;
+      if (!reply) throw new Error('로컬 AI 서버 응답에서 답변을 찾지 못했습니다.');
+      return { reply };
+    }).catch(err => { throw new Error('로컬 AI 서버 호출 실패: ' + err.message + ' (주소·CORS 설정을 확인해주세요)'); });
+  }
+  return callAiProxy_(AI_PROXY_URL, { text: prompt, image: imageDataUrl }).then(r => r.json());
+}
+// AI 응답(JSON 문자열)을 실제 cuts 배열 항목으로 바꾼다. 형식이 안 맞는 항목은 최대한 살려서 반영하되,
+// description마저 없는 완전히 빈 항목은 걸러낸다.
+function parseCutAiReply_(replyText) {
+  const cleaned = stripAiThinking_(replyText);
+  const found = findJsonObject_(cleaned, 'cuts');
+  if (!found || !Array.isArray(found.obj.cuts)) {
+    throw new Error('AI가 정해진 형식(JSON)으로 응답하지 않았습니다' + (cleaned ? ' — 응답 일부: "' + cleaned.slice(0, 80) + '"' : ''));
+  }
+  return found.obj.cuts.map(raw => ({
+    cutNo: (raw && raw.cutNo != null) ? String(raw.cutNo).trim() : '',
+    description: (raw && raw.description && String(raw.description).trim()) || '',
+    shotType: (raw && raw.shotType && String(raw.shotType).trim()) || '',
+    cameraMove: (raw && raw.cameraMove && String(raw.cameraMove).trim()) || '',
+    durationSec: (raw && typeof raw.durationSec === 'number') ? raw.durationSec : (parseFloat(raw && raw.durationSec) || 0),
+    notes: (raw && raw.notes && String(raw.notes).trim()) || '',
+  })).filter(c => c.cutNo || c.description);
+}
+// 스프레드시트(엑셀/CSV) 헤더를 흔한 한국어/영어 표현으로 매칭해서 컷 필드에 매핑한다. 매칭되는 헤더가
+// 하나도 없으면 첫 번째 컬럼값을 통째로 설명(description)에 넣어서, 어떤 표를 올려도 최소한 내용이 통째로
+// 날아가지는 않고 표에서 다시 다듬을 수 있게 한다.
+const CUT_HEADER_SYNONYMS_ = {
+  cutNo: ['컷', '컷번호', '컷no', 'cut', 'cutno', 'no', '번호', 'scene', '씬'],
+  description: ['설명', '내용', '장면', '액션', 'description', 'desc', 'action', '컨텐츠'],
+  shotType: ['샷', '샷사이즈', '사이즈', 'shot', 'shottype', 'size'],
+  cameraMove: ['카메라', '무브먼트', '무브', '카메라워크', 'camera', 'move', 'movement'],
+  durationSec: ['길이', '시간', '초', 'duration', 'sec', 'seconds', 'length'],
+  status: ['상태', 'status'],
+  notes: ['메모', '비고', 'note', 'notes', 'remark'],
+};
+function matchCutHeaderKey_(header) {
+  const h = String(header || '').trim().toLowerCase().replace(/\s+/g, '');
+  for (const key of Object.keys(CUT_HEADER_SYNONYMS_)) {
+    if (CUT_HEADER_SYNONYMS_[key].some(syn => h.indexOf(syn) !== -1)) return key;
+  }
+  return null;
+}
+function rowsToCuts_(rows) {
+  if (!rows.length) return [];
+  const headers = Object.keys(rows[0]);
+  const headerMap = {}; // 실제 컬럼명 -> 컷 필드명
+  headers.forEach(h => { const key = matchCutHeaderKey_(h); if (key && !Object.values(headerMap).includes(key)) headerMap[h] = key; });
+  const matchedAny = Object.keys(headerMap).length > 0;
+  return rows.map(row => {
+    const cut = { cutNo: '', description: '', shotType: '', cameraMove: '', durationSec: 0, status: '', notes: '' };
+    if (matchedAny) {
+      Object.keys(headerMap).forEach(h => {
+        const field = headerMap[h];
+        const val = row[h];
+        cut[field] = field === 'durationSec' ? (parseFloat(val) || 0) : String(val == null ? '' : val).trim();
+      });
+    } else {
+      // 헤더를 하나도 못 알아봤으면(표 형식이 예상과 다름) 첫 컬럼 값을 그대로 설명에 넣어 최소한의 정보라도 살린다.
+      cut.description = String(row[headers[0]] == null ? '' : row[headers[0]]).trim();
+    }
+    return cut;
+  }).filter(c => c.cutNo || c.description);
+}
+// 외부 스크립트(pdf.js, SheetJS)는 실제로 PDF/스프레드시트를 올릴 때만 필요하므로, 페이지 로딩 때 항상
+// 불러오지 않고 필요한 시점에 한 번만 불러온다(같은 src를 중복 로드하지 않도록 캐시).
+const loadedScripts_ = {};
+function loadScriptOnce_(src) {
+  if (loadedScripts_[src]) return loadedScripts_[src];
+  loadedScripts_[src] = new Promise((resolve, reject) => {
+    const s = document.createElement('script');
+    s.src = src;
+    s.onload = () => resolve();
+    s.onerror = () => reject(new Error('외부 라이브러리를 불러오지 못했습니다: ' + src));
+    document.head.appendChild(s);
+  });
+  return loadedScripts_[src];
+}
+const PDFJS_CDN_ = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.0.379/pdf.min.js';
+const PDFJS_WORKER_CDN_ = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.0.379/pdf.worker.min.js';
+const XLSX_CDN_ = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
+// PDF 파일의 각 페이지를 캔버스에 그려서 이미지(JPEG data URL) 배열로 바꾼다. 페이지가 이미 스토리보드
+// 여러 컷을 한 장에 담고 있는 경우가 많아서, 이미지 업로드와 동일한 해상도 상한(ASSET_MAX_DIM)을 맞춘다.
+function renderPdfToImages_(file) {
+  return loadScriptOnce_(PDFJS_CDN_).then(() => {
+    window.pdfjsLib.GlobalWorkerOptions.workerSrc = PDFJS_WORKER_CDN_;
+    return file.arrayBuffer();
+  }).then(buf => window.pdfjsLib.getDocument({ data: buf }).promise).then(pdf => {
+    const pageNums = Array.from({ length: pdf.numPages }, (_, i) => i + 1);
+    // 페이지를 하나씩 순서대로 렌더링한다(동시에 여러 캔버스를 그리면 메모리 부담이 커짐).
+    return pageNums.reduce((chain, pageNum) => chain.then(images => pdf.getPage(pageNum).then(page => {
+      const baseViewport = page.getViewport({ scale: 1 });
+      const scale = Math.min(2, ASSET_MAX_DIM / Math.max(baseViewport.width, baseViewport.height));
+      const viewport = page.getViewport({ scale: Math.max(scale, 0.5) });
+      const canvas = document.createElement('canvas');
+      canvas.width = viewport.width; canvas.height = viewport.height;
+      return page.render({ canvasContext: canvas.getContext('2d'), viewport }).promise.then(() => {
+        images.push(canvas.toDataURL('image/jpeg', ASSET_JPEG_QUALITY));
+        return images;
+      });
+    })), Promise.resolve([]));
+  });
+}
+// 엑셀/CSV 파일을 파싱해서 { header: value } 형태의 행(row) 객체 배열로 바꾼다(첫 번째 시트만 사용).
+function parseSpreadsheetFile_(file) {
+  return loadScriptOnce_(XLSX_CDN_).then(() => file.arrayBuffer()).then(buf => {
+    const wb = window.XLSX.read(buf, { type: 'array' });
+    const firstSheet = wb.Sheets[wb.SheetNames[0]];
+    return window.XLSX.utils.sheet_to_json(firstSheet, { defval: '' });
+  });
+}
+function openCutAiImportModal_() {
+  const projSel = document.getElementById('cai-project');
+  const curFilter = document.getElementById('cutProjectFilter').value;
+  projSel.innerHTML = '<option value="">(미지정)</option>' + projects.map(p => `<option value="${p.id}">${escapeHtml_(p.name)}</option>`).join('');
+  projSel.value = curFilter || '';
+  document.getElementById('cai-files').value = '';
+  document.getElementById('cai-status').textContent = '';
+  const local = loadCutAiLocalSettings_();
+  document.getElementById('cai-local-enabled').checked = local.enabled;
+  document.getElementById('cai-local-endpoint').value = local.endpoint;
+  document.getElementById('cai-local-model').value = local.model;
+  document.getElementById('cai-local-fields').style.display = 'none';
+  document.getElementById('cutAiImportModalBackdrop').classList.add('active');
+}
+function closeCutAiImportModal_() {
+  document.getElementById('cutAiImportModalBackdrop').classList.remove('active');
+  applyPendingRemoteIfAny();
+}
+// 실제 가져오기 실행 — 파일별로 이미지/PDF는 AI 비전 분석을, 스프레드시트는 표 그대로 파싱을 순서대로
+// 처리한다(동시에 여러 건을 AI에 보내면 팀 전체가 공유하는 Groq 분당 토큰 한도에 걸리기 쉬워서, 안전하게
+// 하나씩 처리하고 진행 상황을 계속 화면에 보여준다 — 사용자 쪽 요청사항).
+function runCutAiImport_() {
+  const files = Array.from(document.getElementById('cai-files').files || []);
+  if (!files.length) { showToast('스토리보드 파일을 선택하세요'); return; }
+  const projectId = document.getElementById('cai-project').value;
+  const statusEl = document.getElementById('cai-status');
+  const startBtn = document.getElementById('cai-start-btn');
+  startBtn.disabled = true;
+  const startedAt = new Date();
+  let importedCount = 0;
+  const appendCuts = (cutList, sourceType) => {
+    const sameGroup = cuts.filter(c => (c.projectId || '') === (projectId || ''));
+    let order = sameGroup.length ? Math.max(...sameGroup.map(c => c.order || 0)) : 0;
+    cutList.forEach(c => {
+      order += 1;
+      cuts.push(Object.assign({
+        id: genId_('cut'), projectId: projectId || '', order,
+        status: CUT_STATUS_OPTIONS_[0], thumbDataUrl: '', linkedAssetIds: [], sourceType, updatedAt: Date.now(),
+      }, c));
+      importedCount++;
+    });
+  };
+  // 순서대로(하나씩) 처리 — 시작 시각/진행률을 계속 갱신해서 화면에 보여준다.
+  const runSequential = (items, handler) => items.reduce((chain, item, idx) => chain.then(() => {
+    statusEl.textContent = `시작: ${startedAt.toLocaleTimeString('ko-KR')} · 진행 중 ${idx + 1}/${items.length} (${Math.round((idx / items.length) * 100)}%)…`;
+    return handler(item, idx);
+  }), Promise.resolve());
+  runSequential(files, (file) => {
+    const isPdf = file.type === 'application/pdf' || /\.pdf$/i.test(file.name);
+    const isSpreadsheet = /\.(xlsx|xls|csv)$/i.test(file.name);
+    const isImage = file.type.startsWith('image/');
+    if (isSpreadsheet) {
+      return parseSpreadsheetFile_(file).then(rows => {
+        appendCuts(rowsToCuts_(rows), 'import');
+        renderCuts(); queueAutoSave();
+      }).catch(err => { statusEl.textContent += `\n⚠️ "${file.name}" 표를 읽지 못했습니다: ${err.message}`; });
+    }
+    if (isPdf) {
+      return renderPdfToImages_(file).then(images => runSequential(images, (imgDataUrl, pageIdx) => {
+        statusEl.textContent = `시작: ${startedAt.toLocaleTimeString('ko-KR')} · "${file.name}" ${pageIdx + 1}/${images.length}페이지 분석 중…`;
+        return callVisionAiHybrid_(buildCutSplitPrompt_(), imgDataUrl).then(data => {
+          if (data.error) throw new Error(data.error);
+          appendCuts(parseCutAiReply_(data.reply), 'ai');
+          renderCuts(); queueAutoSave();
+        }).catch(err => { statusEl.textContent += `\n⚠️ "${file.name}" ${pageIdx + 1}페이지 분석 실패: ${err.message}`; });
+      })).catch(err => { statusEl.textContent += `\n⚠️ "${file.name}" PDF를 읽지 못했습니다: ${err.message}`; });
+    }
+    if (isImage) {
+      return resizeImageFile_(file).then(({ dataUrl }) => callVisionAiHybrid_(buildCutSplitPrompt_(), dataUrl)).then(data => {
+        if (data.error) throw new Error(data.error);
+        appendCuts(parseCutAiReply_(data.reply), 'ai');
+        renderCuts(); queueAutoSave();
+      }).catch(err => { statusEl.textContent += `\n⚠️ "${file.name}" 분석 실패: ${err.message}`; });
+    }
+    statusEl.textContent += `\n⚠️ "${file.name}"은(는) 지원하지 않는 형식입니다(이미지/PDF/엑셀/CSV만 가능).`;
+    return Promise.resolve();
+  }).then(() => {
+    startBtn.disabled = false;
+    statusEl.textContent = `✅ 완료 (${startedAt.toLocaleTimeString('ko-KR')} 시작) — 컷 ${importedCount}개를 가져왔습니다. 표에서 내용을 확인·수정해주세요.` + (statusEl.textContent.indexOf('⚠️') !== -1 ? '\n' + statusEl.textContent.split('\n').filter(l => l.indexOf('⚠️') !== -1).join('\n') : '');
+    if (importedCount > 0) { showToast(`컷 ${importedCount}개를 가져왔습니다`); renderCuts(); }
+  });
+}
 // 초기 렌더 - 로그인/실시간 리스너가 붙기 전까지는 빈 화면이며, authGate가 화면을 가리고 있음.
 renderAll();
 initAiDraggable_();
