@@ -1056,10 +1056,16 @@
     </div>
     <div class="form-grid">
       <div style="grid-column:1/-1"><label>연결 프로젝트</label>
-        <select id="cai-project"></select>
+        <select id="cai-project" onchange="cutAiProjectChanged_()"></select>
+      </div>
+      <div style="grid-column:1/-1"><label>키워드/제작의도 (선택, AI 분석에 참고용으로 같이 전달됨)</label>
+        <textarea id="cai-context" rows="2" placeholder="예: 키오스크 매장 광고, 밝고 경쾌한 톤, 제품 클로즈업 강조 / 30초 브랜드필름, 잔잔하고 감성적인 톤 등"></textarea>
+        <div style="font-size:11px; color:var(--text-muted); margin-top:2px;">스토리보드 그림만으로는 알기 어려운 톤·의도·강조 포인트를 적어두면 AI가 설명·샷사이즈를 더 맞게 채워줍니다. 프로젝트를 고르면 프로젝트 비고란 내용이 비어있을 때 자동으로 채워집니다.</div>
       </div>
       <div style="grid-column:1/-1"><label>파일 선택</label>
-        <input type="file" id="cai-files" accept="image/*,application/pdf,.xlsx,.xls,.csv" multiple>
+        <input type="file" id="cai-files" accept="image/*,application/pdf,.xlsx,.xls,.csv" multiple onchange="updateCutAiFileListStatus_()">
+        <div style="font-size:11px; color:var(--text-muted); margin-top:4px;">💡 스토리보드 화면을 캡처했다면 파일 선택 없이 이 창에 그대로 Ctrl+V(붙여넣기)해도 추가됩니다(여러 번 붙여넣으면 계속 쌓입니다).</div>
+        <div id="cai-file-status" style="font-size:11px; color:var(--text-secondary); margin-top:4px;"></div>
       </div>
     </div>
     <button type="button" class="advanced-toggle" onclick="toggleCutAiLocalSettings_()">로컬 AI 사용 설정 ▾</button>
@@ -4738,6 +4744,13 @@ function initClipboardImagePaste_() {
     const files = imageItems.map(it => it.getAsFile()).filter(Boolean);
     if (!files.length) return;
     e.preventDefault();
+    // "스토리보드로 자동 생성" 모달이 열려있으면, 캡처해둔 스토리보드 화면을 파일 선택 없이 바로
+    // Ctrl+V로 추가할 수 있게 한다(여러 번 붙여넣으면 계속 누적됨) — 분석은 "분석 시작"을 눌러야 시작된다.
+    if (document.getElementById('cutAiImportModalBackdrop').classList.contains('active')) {
+      appendFilesToCutAiInput_(files);
+      showToast(`클립보드 이미지 ${files.length}장을 스토리보드 파일 목록에 추가했습니다`);
+      return;
+    }
     // 자료 등록 모달이 이미 열려있으면(사용자가 명시적으로 그 폼을 쓰는 중) 기존 방식 그대로 채워준다.
     const backdrop = document.getElementById('assetModalBackdrop');
     const assetModalOpen = backdrop.classList.contains('active');
@@ -6723,8 +6736,11 @@ function closeCutAssetPicker_() {
 // ---------- 스토리보드 → 컷 자동 생성 (이미지/PDF는 AI 비전 분석, 스프레드시트는 AI 없이 표 그대로) ----------
 // 컷 분석용 프롬프트: analyzeImageWithAi_()와 같은 "JSON만 답하라" 원칙을 그대로 따르되, 결과가 객체 하나가
 // 아니라 배열이라 findJsonObject_(reply, 'cuts')로 {"cuts":[...]} 형태의 래퍼 객체를 찾도록 설계했다.
-function buildCutSplitPrompt_() {
-  return '이 이미지는 영상 제작용 스토리보드(콘티)의 한 페이지야. 이 안에 그려진 각 컷(장면)을 왼쪽 위부터 순서대로 전부 나눠서 분석해줘. ' +
+// context(키워드/제작의도): 스토리보드 그림만 봐서는 알 수 없는 톤·용도·강조 포인트를 사용자가 미리 적어두면
+// AI가 설명·샷사이즈를 그 의도에 맞게 채울 수 있다 — analyzeImageWithAi_()의 contextNote와 같은 원칙.
+function buildCutSplitPrompt_(context) {
+  const contextLine = context && context.trim() ? `참고로 이 영상의 제작 의도/키워드는 다음과 같아: "${context.trim()}". 이 맥락을 반영해서 설명·샷사이즈를 판단해줘.\n` : '';
+  return contextLine + '이 이미지는 영상 제작용 스토리보드(콘티)의 한 페이지야. 이 안에 그려진 각 컷(장면)을 왼쪽 위부터 순서대로 전부 나눠서 분석해줘. ' +
     '다음 JSON 형식으로만, 다른 설명 없이 답해줘:\n' +
     '{"cuts": [{"cutNo": "이미지에 컷 번호가 적혀 있으면 그대로, 없으면 순서대로 1부터", "description": "이 컷의 장면/액션을 25자 내외 한국어로 설명", ' +
     '"shotType": "샷 사이즈(익스트림롱샷/롱샷/풀샷/미디엄샷/클로즈업/익스트림클로즈업 중 하나, 모르면 빈 문자열)", ' +
@@ -6889,8 +6905,11 @@ function openCutAiImportModal_() {
   const curFilter = document.getElementById('cutProjectFilter').value;
   projSel.innerHTML = '<option value="">(미지정)</option>' + projects.map(p => `<option value="${p.id}">${escapeHtml_(p.name)}</option>`).join('');
   projSel.value = curFilter || '';
+  document.getElementById('cai-context').value = '';
+  cutAiProjectChanged_(); // 프로젝트가 미리 선택돼 있었으면(필터에서 넘어온 경우) 비고란으로 바로 채워준다
   document.getElementById('cai-files').value = '';
   document.getElementById('cai-status').textContent = '';
+  updateCutAiFileListStatus_();
   const local = loadCutAiLocalSettings_();
   document.getElementById('cai-local-enabled').checked = local.enabled;
   document.getElementById('cai-local-endpoint').value = local.endpoint;
@@ -6902,6 +6921,31 @@ function closeCutAiImportModal_() {
   document.getElementById('cutAiImportModalBackdrop').classList.remove('active');
   applyPendingRemoteIfAny();
 }
+// 프로젝트를 고르면(또는 모달을 열 때 필터에서 넘어온 프로젝트가 있으면), 키워드/제작의도 칸이
+// 비어있을 때만 그 프로젝트의 비고(note)를 채워준다 — 다른 자동채움 기능과 같은 원칙(직접 적은 내용은 덮어쓰지 않음).
+function cutAiProjectChanged_() {
+  const projSel = document.getElementById('cai-project');
+  const contextEl = document.getElementById('cai-context');
+  if (!projSel.value || contextEl.value.trim()) return;
+  const p = projects.find(x => x.id === projSel.value);
+  if (p && p.note) contextEl.value = p.note;
+}
+// 클립보드에서 붙여넣은 이미지를 기존 파일 선택 내용에 이어붙인다(파일 input의 FileList는 직접
+// 수정할 수 없어서 DataTransfer로 새로 만들어 통째로 교체하는 방식을 쓴다).
+function appendFilesToCutAiInput_(newFiles) {
+  const input = document.getElementById('cai-files');
+  const transfer = new DataTransfer();
+  Array.from(input.files || []).forEach(f => transfer.items.add(f));
+  newFiles.forEach(f => transfer.items.add(f));
+  input.files = transfer.files;
+  updateCutAiFileListStatus_();
+}
+function updateCutAiFileListStatus_() {
+  const input = document.getElementById('cai-files');
+  const statusEl = document.getElementById('cai-file-status');
+  const files = Array.from(input.files || []);
+  statusEl.textContent = files.length ? `선택된 파일 ${files.length}개: ${files.map(f => f.name).join(', ')}` : '';
+}
 // 실제 가져오기 실행 — 파일별로 이미지/PDF는 AI 비전 분석을, 스프레드시트는 표 그대로 파싱을 순서대로
 // 처리한다(동시에 여러 건을 AI에 보내면 팀 전체가 공유하는 Groq 분당 토큰 한도에 걸리기 쉬워서, 안전하게
 // 하나씩 처리하고 진행 상황을 계속 화면에 보여준다 — 사용자 쪽 요청사항).
@@ -6909,6 +6953,7 @@ function runCutAiImport_() {
   const files = Array.from(document.getElementById('cai-files').files || []);
   if (!files.length) { showToast('스토리보드 파일을 선택하세요'); return; }
   const projectId = document.getElementById('cai-project').value;
+  const context = document.getElementById('cai-context').value.trim();
   const statusEl = document.getElementById('cai-status');
   const startBtn = document.getElementById('cai-start-btn');
   startBtn.disabled = true;
@@ -6944,7 +6989,7 @@ function runCutAiImport_() {
     if (isPdf) {
       return renderPdfToImages_(file).then(images => runSequential(images, (imgDataUrl, pageIdx) => {
         statusEl.textContent = `시작: ${startedAt.toLocaleTimeString('ko-KR')} · "${file.name}" ${pageIdx + 1}/${images.length}페이지 분석 중…`;
-        return callVisionAiHybrid_(buildCutSplitPrompt_(), imgDataUrl).then(data => {
+        return callVisionAiHybrid_(buildCutSplitPrompt_(context), imgDataUrl).then(data => {
           if (data.error) throw new Error(data.error);
           appendCuts(parseCutAiReply_(data.reply), 'ai');
           renderCuts(); queueAutoSave();
@@ -6952,7 +6997,7 @@ function runCutAiImport_() {
       })).catch(err => { statusEl.textContent += `\n⚠️ "${file.name}" PDF를 읽지 못했습니다: ${err.message}`; });
     }
     if (isImage) {
-      return resizeImageFile_(file).then(({ dataUrl }) => callVisionAiHybrid_(buildCutSplitPrompt_(), dataUrl)).then(data => {
+      return resizeImageFile_(file).then(({ dataUrl }) => callVisionAiHybrid_(buildCutSplitPrompt_(context), dataUrl)).then(data => {
         if (data.error) throw new Error(data.error);
         appendCuts(parseCutAiReply_(data.reply), 'ai');
         renderCuts(); queueAutoSave();
