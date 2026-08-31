@@ -895,6 +895,7 @@
       <input type="text" id="cutKeyword" placeholder="장소/컷 번호/내용/메모 검색" oninput="renderCutsDebounced_()" style="flex:1; min-width:160px;">
       <button type="button" onclick="exportCutsCsv_()">CSV로 내보내기</button>
       <button type="button" onclick="openCutPromptViewer_()">📋 프롬프트 보기</button>
+      <button type="button" onclick="openCutBulkEditModal_()">🪄 일괄 수정(AI)</button>
       <button type="button" onclick="deleteAllCuts_()" style="color:var(--critical);">전체 삭제</button>
     </div>
     <datalist id="cutShotTypeList">
@@ -906,6 +907,7 @@
     <datalist id="cutTransitionList">
       <option value="—"><option value="컷"><option value="디졸브"><option value="페이드인"><option value="페이드아웃"><option value="그린 와이프"><option value="화이트 와이프"><option value="차체 와이프"><option value="드론 상승">
     </datalist>
+    <div id="cutRuntimeSummary" style="font-size:12.5px; color:var(--text-secondary); margin:-4px 0 12px;"></div>
     <div id="cutGroups"></div>
     <div class="empty-state" id="cutEmpty" style="display:none">등록된 컷이 없습니다. "스토리보드로 자동 생성" 또는 "+ 컷 직접 추가"로 시작하세요.</div>
     </div>
@@ -1215,6 +1217,10 @@
         <textarea id="cai-context" rows="2" placeholder="예: 키오스크 매장 광고, 밝고 경쾌한 톤, 제품 클로즈업 강조 / 30초 브랜드필름, 잔잔하고 감성적인 톤 등"></textarea>
         <div style="font-size:11px; color:var(--text-muted); margin-top:2px;">파일 없이 이것만 입력하고 "분석 시작"을 누르면 AI가 여기 적힌 의도만으로 씬·컷 구성을 처음부터 창작합니다. 파일을 올릴 때는 스토리보드 그림만으로는 알기 어려운 톤·강조 포인트를 보완하는 참고용으로 쓰입니다. 프로젝트를 고르면 프로젝트 비고란 내용이 비어있을 때 자동으로 채워집니다.</div>
       </div>
+      <div style="grid-column:1/-1"><label>목표 러닝타임 (초 · 선택 사항)</label>
+        <input type="number" id="cai-target-runtime" min="1" step="1" placeholder="예: 30 (비워두면 15~25컷 기준으로 자유롭게 구성)">
+        <div style="font-size:11px; color:var(--text-muted); margin-top:2px;">파일 없이 새로 기획하는 경우, 여기 적은 전체 영상 길이(초)에 맞춰 컷 개수와 컷별 길이를 배분합니다. 파일을 분석하는 경우에는 참고용으로만 쓰이고 실제 컷 길이는 원본 스토리보드 내용을 따릅니다.</div>
+      </div>
       <div style="grid-column:1/-1"><label>파일 선택 (선택 사항)</label>
         <input type="file" id="cai-files" accept="image/*,application/pdf,.xlsx,.xls,.csv" multiple onchange="updateCutAiFileListStatus_()">
         <div style="font-size:11px; color:var(--text-muted); margin-top:4px;">💡 스토리보드 화면을 캡처했다면 파일 선택 없이 이 창에 그대로 Ctrl+V(붙여넣기)해도 추가됩니다(여러 번 붙여넣으면 계속 쌓입니다). 파일을 하나도 안 올리면 위 키워드/제작의도만으로 AI가 새로 기획합니다.</div>
@@ -1241,6 +1247,32 @@
     <div class="modal-footer">
       <button onclick="closeCutAiImportModal_()">닫기</button>
       <button class="primary" id="cai-start-btn" onclick="runCutAiImport_()">분석 시작</button>
+    </div>
+  </div>
+</div>
+<!-- 이미 만들어진 컷리스트를 한 번의 지시로 일괄 수정(AI) 모달 -->
+<div class="modal-backdrop" id="cutBulkEditModalBackdrop">
+  <div class="modal" style="max-width:520px;">
+    <h2>컷리스트 일괄 수정 (AI)</h2>
+    <div style="font-size:12px; color:var(--text-muted); margin-bottom:10px;">
+      한 컷씩 고치지 않고, 지금 프로젝트 필터에 걸린 컷리스트 전체에 지시 하나로 한 번에 반영합니다(예: "전체 톤을 더 밝고 경쾌하게 바꿔줘", "카메라 무브먼트를 전부 핸드헬드 위주로 바꿔줘", "중간에 제품 클로즈업 컷 2개를 추가해줘"). 삭제는 휴지통을 거치므로 30일 안에는 되돌릴 수 있습니다.
+    </div>
+    <div class="form-grid">
+      <div style="grid-column:1/-1"><label>적용 범위</label>
+        <div id="cbe-scope-label" style="font-size:13px; padding:6px 0; color:var(--text);"></div>
+      </div>
+      <div style="grid-column:1/-1"><label>수정 지시</label>
+        <textarea id="cbe-instruction" rows="3" placeholder="예: 전체적으로 좀 더 속도감 있게 컷을 짧게 쪼개줘 / 카메라 무브먼트를 다양하게 섞어줘 / 마지막에 로고 클로징 컷을 추가해줘"></textarea>
+      </div>
+      <div style="grid-column:1/-1"><label>목표 러닝타임 (초 · 선택 사항)</label>
+        <input type="number" id="cbe-target-runtime" min="1" step="1" placeholder="비워두면 길이는 지시 내용에 맞게만 조정">
+      </div>
+    </div>
+    <div id="cbe-status" style="font-size:12px; color:var(--text-muted); margin-top:10px; white-space:pre-wrap;"></div>
+    <div id="cbe-fallback-choice" style="display:none; margin-top:10px; padding:10px; border:1px dashed var(--critical); border-radius:6px;"></div>
+    <div class="modal-footer">
+      <button onclick="closeCutBulkEditModal_()">닫기</button>
+      <button class="primary" id="cbe-start-btn" onclick="runCutBulkEdit_()">일괄 수정 실행</button>
     </div>
   </div>
 </div>
@@ -6874,6 +6906,8 @@ function renderCuts() {
     ...(groupIds.includes('') ? [''] : []),
   ].filter(pid => !projectFilter || pid === projectFilter);
   const groupsEl = document.getElementById('cutGroups');
+  let visibleCutCount_ = 0;
+  let visibleDurationTotal_ = 0;
   groupsEl.innerHTML = orderedGroupIds.map(pid => {
     const proj = projects.find(p => p.id === pid);
     const groupLabel = proj ? proj.name : '(프로젝트 미지정)';
@@ -6881,6 +6915,8 @@ function renderCuts() {
     if (keyword) {
       rows = rows.filter(c => `${c.scene||''} ${c.cutNo||''} ${c.description||''} ${c.notes||''}`.toLowerCase().indexOf(keyword) !== -1);
     }
+    visibleCutCount_ += rows.length;
+    visibleDurationTotal_ += rows.reduce((s, c) => s + (Number(c.durationSec) || 0), 0);
     rows = rows.slice().sort((a, b) => (a.order || 0) - (b.order || 0));
     // 장소/씬별로 묶는다 — 실제 촬영 현장 순서(스토리보드 상 등장 순서)를 그대로 유지하기 위해, 정렬하지
     // 않고 "처음 등장한 순서" 그대로 장소 목록을 뽑는다(같은 장소가 떨어져서 다시 나오면 별도 그룹으로 취급).
@@ -6931,6 +6967,20 @@ function renderCuts() {
   if (!orderedGroupIds.length && cuts.length) {
     groupsEl.innerHTML = '<div class="empty-state">조건에 맞는 컷이 없습니다.</div>';
   }
+  renderCutRuntimeSummary_(visibleCutCount_, visibleDurationTotal_);
+}
+// 지금 필터(프로젝트/검색어)에 걸려 보이는 컷들의 총 러닝타임을 툴바 아래에 실시간으로 보여준다.
+// durationSec을 안 채운 컷은 합계에서 0으로 취급되므로, 그 사실도 같이 안내한다.
+function renderCutRuntimeSummary_(count, totalSec) {
+  const el = document.getElementById('cutRuntimeSummary');
+  if (!el) return;
+  if (!count) { el.textContent = ''; return; }
+  const mm = Math.floor(totalSec / 60);
+  const ss = Math.round(totalSec % 60);
+  const mmss = `${mm}:${String(ss).padStart(2, '0')}`;
+  const missing = cuts.filter(c => !(Number(c.durationSec) > 0)).length;
+  const missingNote = missing ? ` (길이 미입력 컷 ${missing}개는 0초로 계산됨)` : '';
+  el.textContent = `표시된 컷 ${count}개 · 예상 총 러닝타임 ${totalSec}초 (${mmss})${missingNote}`;
 }
 // CSV로 내보내기 — 지금 프로젝트 필터가 걸려있으면 그 프로젝트 컷만, 아니면 전체를 내보낸다.
 // 라이브러리 없이 브라우저 안에서 바로 텍스트를 만들어 다운로드한다(엑셀에서 바로 열림).
@@ -7056,41 +7106,74 @@ function closeCutAssetPicker_() {
 // 안내한다(길이는 4~30초 지정 또는 자동(-1), 화면비는 adaptive 포함, 다국어 프롬프트 지원).
 // 이 함수는 AI 호출 없이, 표에 이미 입력된 구조화된 컷 정보(장소·내용·샷사이즈·카메라무브먼트·
 // 메모·연결자료)를 그 형식에 맞춰 즉시 하나의 프롬프트 문장으로 조립한다.
+// 한국어 조사(으로/로) 자연스러운 결합 헬퍼 — 한글 음절의 종성(받침) 유무로 판단한다.
+// 받침이 없거나(jong===0) 리을 받침(jong===8, 예: "핸드헬드"→받침없음, "줌아웃"→ㅅ받침)이면 "로",
+// 그 외에는 "으로"를 붙인다. 한글 음절이 아니면(영문 등) 안전하게 "로"를 기본값으로 쓴다.
+function withRoParticle_(word) {
+  const w = String(word || '').trim();
+  if (!w) return w;
+  const code = w.charCodeAt(w.length - 1);
+  if (code < 0xAC00 || code > 0xD7A3) return '로';
+  const jong = (code - 0xAC00) % 28;
+  return (jong === 0 || jong === 8) ? '로' : '으로';
+}
+// ---------- 컷 정보를 "라벨: 값" 나열이 아니라 실제로 읽히는 한 편의 프롬프트 문장으로 조립 ----------
+// 시댄스/범용 두 프로필이 공유하는 조립 로직. openingPrefix로 참고 자료를 어떻게 지칭할지만
+// (예: "[Image1] 속..." vs "reference.jpg 속...") 다르게 받고, 문장을 엮는 방식은 동일하다.
+// 샷 사이즈는 실제 영상 프롬프트에서 흔히 쓰는 "(풀샷)" 같은 괄호 주석으로 붙이고, 카메라 무브먼트는
+// "핸드헬드로 담는다"처럼 자연스러운 동사구로 풀어 쓴다. 컷 전환 정보는 프롬프트 본문이 아니라
+// 메타 라인(안내 줄)에서만 다루므로 여기서는 다루지 않는다.
+function composeCinematicPromptText_(cut, openingPrefix) {
+  const scene = (cut.scene || '').trim();
+  const desc = (cut.description || '').trim();
+  const shotType = (cut.shotType || '').trim();
+  const cameraMove = (cut.cameraMove || '').trim();
+  const notes = (cut.notes || '').trim();
+  const sentences = [];
+  if (openingPrefix) sentences.push(openingPrefix);
+
+  let opening = '';
+  if (scene) opening = `${scene}에서`;
+  if (desc) {
+    const bare = /[.!?]$/.test(desc) ? desc.slice(0, -1) : desc;
+    opening = opening ? `${opening} ${bare}` : bare;
+  }
+  if (opening) {
+    const annotation = shotType ? ` (${shotType})` : '';
+    sentences.push(`${opening}${annotation}.`);
+  }
+  if (cameraMove) {
+    sentences.push(cameraMove === '고정'
+      ? '카메라는 고정된 채 움직이지 않는다.'
+      : `카메라는 ${cameraMove}${withRoParticle_(cameraMove)} 장면을 담는다.`);
+  }
+  if (notes) sentences.push(`대사: "${notes}"`);
+  return sentences.filter(Boolean).join(' ');
+}
 function buildSeedancePrompt_(cut) {
   const linkedAssetObjs = (cut.linkedAssetIds || []).map(aid => assets.find(a => a.id === aid)).filter(Boolean);
   const refImages = linkedAssetObjs.filter(a => a.type === 'image');
   const refVideos = linkedAssetObjs.filter(a => a.type === 'video');
   const imageLabels = refImages.map((a, i) => `[Image${i + 1}]`);
   const videoLabels = refVideos.map((a, i) => `[Video${i + 1}]`);
-  const parts = [];
-  if (imageLabels.length) parts.push(`${imageLabels.join(', ')} 속 인물·배경·화풍을 그대로 유지하면서 다음 장면을 생성해줘.`);
-  if (cut.scene && cut.scene.trim()) parts.push(`장소/씬: ${cut.scene.trim()}.`);
-  if (cut.description && cut.description.trim()) {
-    const d = cut.description.trim();
-    parts.push(/[.!?]$/.test(d) ? d : d + '.');
-  }
-  if (cut.shotType && cut.shotType.trim()) parts.push(`샷 사이즈: ${cut.shotType.trim()}.`);
-  if (cut.cameraMove && cut.cameraMove.trim()) {
-    parts.push(cut.cameraMove.trim() === '고정'
-      ? '카메라는 고정(fixed)한 채로 움직이지 않는다.'
-      : `카메라 무브먼트: ${cut.cameraMove.trim()}.`);
-  }
-  if (videoLabels.length) parts.push(`${videoLabels.join(', ')}에 담긴 움직임/편집 흐름을 참고해줘.`);
-  if (cut.notes && cut.notes.trim()) parts.push(`대사/메모: "${cut.notes.trim()}"`);
-  if (cut.transition && cut.transition.trim() && cut.transition.trim() !== '-' && cut.transition.trim() !== '—') {
-    parts.push(`다음 컷으로의 전환: ${cut.transition.trim()}.`);
-  }
+  const refMentions = [];
+  if (imageLabels.length) refMentions.push(`${imageLabels.join(', ')} 속 인물·배경·화풍을 그대로 유지하며`);
+  if (videoLabels.length) refMentions.push(`${videoLabels.join(', ')}에 담긴 움직임과 편집 흐름을 참고해`);
+  const openingPrefix = refMentions.length ? `${refMentions.join(', ')} 다음 장면을 생성해줘.` : '';
+  const prompt = composeCinematicPromptText_(cut, openingPrefix);
   const rawDuration = Number(cut.durationSec) || 0;
   const durationSec = rawDuration > 0 ? Math.min(30, Math.max(4, Math.round(rawDuration))) : -1;
-  return { prompt: parts.join(' '), durationSec, refImages, refVideos };
+  return { prompt, durationSec, refImages, refVideos };
 }
-function formatSeedanceMetaLine_(built) {
+function formatSeedanceMetaLine_(built, cut) {
   const durationLabel = built.durationSec === -1 ? '자동(-1)' : `${built.durationSec}초`;
   const refParts = [];
   if (built.refImages.length) refParts.push(built.refImages.map((a, i) => `[Image${i + 1}] ${a.name || '(이름없음)'}`).join(', '));
   if (built.refVideos.length) refParts.push(built.refVideos.map((a, i) => `[Video${i + 1}] ${a.name || '(이름없음)'}`).join(', '));
   const refLabel = refParts.length ? refParts.join(' · ') : '연결된 참고 자료 없음(자료 연결 관리에서 추가 가능)';
-  return `권장 길이: ${durationLabel} (4~30초 또는 자동) · 화면비: adaptive 권장 · 참고 자료: ${refLabel}`;
+  const t = cut && cut.transition && cut.transition.trim() && cut.transition.trim() !== '-' && cut.transition.trim() !== '—' ? cut.transition.trim() : '';
+  const transitionLabel = t ? ` · 다음 컷 전환: ${t}` : '';
+  return `권장 길이: ${durationLabel} (4~30초 또는 자동) · 화면비: adaptive 권장 · 참고 자료: ${refLabel}${transitionLabel}`;
 }
 function buildSeedanceJsonData_(cut) {
   const built = buildSeedancePrompt_(cut);
@@ -7125,21 +7208,17 @@ function buildGenericPromptData_(cut) {
 }
 function buildGenericPromptText_(cut) {
   const d = buildGenericPromptData_(cut);
-  const parts = [];
-  if (d.scene) parts.push(`장소/씬: ${d.scene}.`);
-  if (d.action) parts.push(/[.!?]$/.test(d.action) ? d.action : d.action + '.');
-  if (d.shot_type) parts.push(`샷 사이즈: ${d.shot_type}.`);
-  if (d.camera_move) parts.push(`카메라 무브먼트: ${d.camera_move}.`);
-  if (d.reference_images.length) parts.push(`참고 이미지: ${d.reference_images.join(', ')} (함께 업로드).`);
-  if (d.reference_videos.length) parts.push(`참고 영상: ${d.reference_videos.join(', ')} (함께 업로드).`);
-  if (d.dialogue_or_notes) parts.push(`대사/메모: "${d.dialogue_or_notes}"`);
-  if (d.transition) parts.push(`다음 컷 전환: ${d.transition}.`);
-  return parts.join(' ');
+  const refMentions = [];
+  if (d.reference_images.length) refMentions.push(`${d.reference_images.join(', ')} 이미지 속 인물·배경·화풍을 참고해`);
+  if (d.reference_videos.length) refMentions.push(`${d.reference_videos.join(', ')} 영상에 담긴 움직임과 편집 흐름을 참고해`);
+  const openingPrefix = refMentions.length ? `${refMentions.join(', ')} 다음 장면을 생성해줘.` : '';
+  return composeCinematicPromptText_(cut, openingPrefix);
 }
 function formatGenericMetaLine_(cut) {
   const d = buildGenericPromptData_(cut);
   const durationLabel = d.duration_sec ? `${d.duration_sec}초` : '미지정';
-  return `길이: ${durationLabel} · 참고 이미지 ${d.reference_images.length}개 · 참고 영상 ${d.reference_videos.length}개 (모델별 라벨링 규칙 없이 파일명만 표기)`;
+  const transitionLabel = d.transition ? ` · 다음 컷 전환: ${d.transition}` : '';
+  return `길이: ${durationLabel} · 참고 이미지 ${d.reference_images.length}개 · 참고 영상 ${d.reference_videos.length}개 (모델별 라벨링 규칙 없이 파일명만 표기)${transitionLabel}`;
 }
 // ---------- 프롬프트 모델 선택 ----------
 // 여러 영상 생성 모델을 지원하기 위한 확장 가능한 레지스트리. 지금은 시댄스 2.5(실제 프롬프트 작성
@@ -7152,7 +7231,7 @@ const PROMPT_MODEL_PROFILES_ = [
     label: '시댄스(Seedance) 2.5',
     buildText: (cut) => buildSeedancePrompt_(cut).prompt,
     buildJson: (cut) => buildSeedanceJsonData_(cut),
-    metaLine: (cut) => formatSeedanceMetaLine_(buildSeedancePrompt_(cut)),
+    metaLine: (cut) => formatSeedanceMetaLine_(buildSeedancePrompt_(cut), cut),
   },
   {
     key: 'generic',
@@ -7465,14 +7544,20 @@ function callVisionAiWithFallbackChoice_(prompt, imageDataUrl) {
 // buildCutSplitPrompt_()가 "이미 있는 그림을 컷으로 나누는" 것이라면, 이건 "그림 없이 글로만 창작"하는
 // 것 — 그래서 결과 JSON 스키마를 parseCutAiReply_()가 기대하는 형태와 완전히 똑같이 맞춰서 파싱 로직을
 // 그대로 재사용한다.
-function buildCutTextGenPrompt_(context) {
+function buildCutTextGenPrompt_(context, targetRuntimeSec) {
   const contextLine = context && context.trim()
     ? `다음은 이 영상의 제작 의도/키워드/컨셉이야: "${context.trim()}".\n`
     : '별도로 전달된 제작 의도가 없으니, 일반적인 홍보/브랜드 영상 한 편을 가정하고 자유롭게 기획해줘.\n';
+  const runtime = Number(targetRuntimeSec) || 0;
+  // 목표 러닝타임이 있으면 그 길이에 맞춰 컷 개수·컷별 길이 배분을 구체적으로 지시하고,
+  // 없으면(비워둔 경우) 기존처럼 자유로운 분량(15~25컷)으로 기획하게 둔다.
+  const lengthGuide = runtime > 0
+    ? `전체 영상 러닝타임은 정확히 ${runtime}초로 맞춰줘. 컷별 durationSec의 합이 ${runtime}초에 최대한 가깝도록(±5% 이내) 배분하고, 컷 하나당 보통 2~6초 정도로 나눠서 총 러닝타임에 맞는 컷 개수를 스스로 정해줘. `
+    : '전체 분량은 15~25컷 정도로 구성해줘(너무 짧거나 과하게 길지 않게). ';
   return contextLine +
     '이 내용만 보고(참고할 스토리보드 그림은 없음), 실제 영상 제작 현장에서 쓰는 스토리보드(콘티)를 처음부터 새로 기획해서 컷리스트 표 형식으로 작성해줘. ' +
     '오프닝-전개-마무리 등 전체 흐름이 자연스럽게 이어지도록 장소/씬을 나누고, 같은 장소/씬 안에는 여러 컷을 배치해줘(보통 씬당 2~5컷 정도). ' +
-    '전체 분량은 15~25컷 정도로 구성해줘(너무 짧거나 과하게 길지 않게). ' +
+    lengthGuide +
     '다음 JSON 형식으로만, 다른 설명 없이 답해줘:\n' +
     '{"cuts": [{"scene": "이 컷이 속한 장소/씬 이름(예: \'#S01_이른 아침_주택가 도로\'처럼 시간대·장소가 드러나게)", ' +
     '"cutNo": "씬 안에서 순서대로 1부터", ' +
@@ -7566,6 +7651,142 @@ function parseCutAiReply_(replyText) {
     durationSec: (raw && typeof raw.durationSec === 'number') ? raw.durationSec : (parseFloat(raw && raw.durationSec) || 0),
     notes: (raw && raw.notes && String(raw.notes).trim()) || '',
   })).filter(c => c.cutNo || c.description);
+}
+// ---------- 이미 만들어진 컷리스트를 한 번의 지시로 일괄 수정(AI) ----------
+// "한 컷씩 고치지 않고, 전체 톤/순서/길이 등을 한 번에 다시 정리"하고 싶을 때 쓰는 기능. 기존 컷의 id를
+// 그대로 실어 보내고, AI에게는 "고칠 컷만 그 id와 함께 돌려주고, 안 건드릴 컷은 응답에서 아예 빼도
+// 된다(그대로 유지됨)"는 규칙을 준다 — 매 컷을 빠짐없이 다시 나열해야 하는 부담을 줄여서, 의도치 않게
+// 컷이 누락되어 사라지는 사고를 막기 위함. 삭제는 반드시 명시적인 delete_ids로만 이뤄지게 해서(휴지통을
+// 거치므로 30일 안에는 복구 가능) AI가 실수로 컷을 지워도 되돌릴 수 있게 한다.
+function buildCutBulkEditPrompt_(existingCuts, instruction, targetRuntimeSec) {
+  const slim = existingCuts.map(c => ({
+    id: c.id, scene: c.scene || '', cutNo: c.cutNo || '', description: c.description || '',
+    transition: c.transition || '', shotType: c.shotType || '', cameraMove: c.cameraMove || '',
+    durationSec: Number(c.durationSec) || 0, notes: c.notes || '',
+  }));
+  const runtime = Number(targetRuntimeSec) || 0;
+  const runtimeLine = runtime > 0
+    ? `이 수정을 반영한 뒤 전체 컷의 durationSec 합이 ${runtime}초(±5% 이내)가 되도록 각 컷의 durationSec도 같이 조정해줘(필요하면 언급 안 된 컷의 길이도 같이 손봐도 됨). `
+    : '';
+  return `다음은 현재 컷리스트 전체야(JSON 배열, 각 컷은 원래 id를 가지고 있음):\n${JSON.stringify(slim)}\n\n` +
+    `이 컷리스트에 다음 지시를 반영해줘: "${(instruction || '').trim()}"\n\n` +
+    runtimeLine +
+    '규칙: (1) 내용을 고치는 기존 컷은 반드시 그 컷의 원래 "id" 값을 그대로 포함해서 돌려줘(id가 없으면 새 컷으로 취급되어 중복 생성됨). ' +
+    '(2) 지시와 무관해서 그대로 둘 기존 컷은 응답에 아예 포함하지 않아도 된다(자동으로 그대로 유지됨) — 모든 컷을 빠짐없이 다시 나열할 필요 없음. ' +
+    '(3) 완전히 새로 추가하는 컷만 "id" 없이 보내줘. ' +
+    '(4) 통째로 삭제해야 하는 기존 컷은 cuts 배열에 넣지 말고, 그 id를 delete_ids 배열에 담아줘(다른 방식으로 삭제를 표현하지 말 것). ' +
+    '다음 JSON 형식으로만, 다른 설명 없이 답해줘:\n' +
+    '{"cuts": [{"id": "수정하는 기존 컷이면 그 id, 새 컷이면 생략", "scene": "...", "cutNo": "...", "description": "...", "transition": "...", "shotType": "...", "cameraMove": "...", "durationSec": 숫자, "notes": "..."}], ' +
+    '"delete_ids": ["삭제할 기존 컷의 id", "..."]}';
+}
+// buildCutBulkEditPrompt_()의 응답을 파싱한다. parseCutAiReply_()와 달리 각 컷의 id를 보존해야
+// 기존 컷 수정/신규 컷 추가를 구분할 수 있으므로 별도 파서를 둔다.
+function parseCutBulkEditReply_(replyText) {
+  const cleaned = stripAiThinking_(replyText);
+  const found = findJsonObject_(cleaned, 'cuts');
+  if (!found || !Array.isArray(found.obj.cuts)) {
+    throw new Error('AI가 정해진 형식(JSON)으로 응답하지 않았습니다' + (cleaned ? ' — 응답 일부: "' + cleaned.slice(0, 300) + '"' : ''));
+  }
+  const cutsOut = found.obj.cuts.map(raw => ({
+    id: (raw && raw.id) ? String(raw.id).trim() : '',
+    scene: (raw && raw.scene != null) ? String(raw.scene).trim() : '',
+    cutNo: (raw && raw.cutNo != null) ? String(raw.cutNo).trim() : '',
+    description: (raw && raw.description != null) ? String(raw.description).trim() : '',
+    transition: (raw && raw.transition != null) ? String(raw.transition).trim() : '',
+    shotType: (raw && raw.shotType != null) ? String(raw.shotType).trim() : '',
+    cameraMove: (raw && raw.cameraMove != null) ? String(raw.cameraMove).trim() : '',
+    durationSec: (raw && typeof raw.durationSec === 'number') ? raw.durationSec : (parseFloat(raw && raw.durationSec) || 0),
+    notes: (raw && raw.notes != null) ? String(raw.notes).trim() : '',
+  })).filter(c => c.id || c.cutNo || c.description);
+  const deleteIds = Array.isArray(found.obj.delete_ids) ? found.obj.delete_ids.map(x => String(x).trim()).filter(Boolean) : [];
+  return { cuts: cutsOut, deleteIds };
+}
+// 일괄 수정은 항상 "지금 컷리스트 화면에 걸린 프로젝트 필터" 범위로만 적용한다 — 다른 사람이 다른
+// 프로젝트에서 정리 중인 컷까지 한 번에 건드리는 사고를 막기 위함(필터를 안 걸었으면 전체가 범위).
+function cutBulkEditScope_() {
+  const filterSel = document.getElementById('cutProjectFilter');
+  const projectFilter = filterSel ? filterSel.value : '';
+  const proj = projects.find(p => p.id === projectFilter);
+  const label = projectFilter ? (proj ? proj.name : '선택한 프로젝트') : '전체(프로젝트 필터 없음)';
+  const targets = cuts.filter(c => !projectFilter || (c.projectId || '') === projectFilter);
+  return { projectFilter, label, targets };
+}
+function openCutBulkEditModal_() {
+  const scope = cutBulkEditScope_();
+  document.getElementById('cbe-scope-label').textContent = `"${scope.label}" — 현재 컷 ${scope.targets.length}개`;
+  document.getElementById('cbe-instruction').value = '';
+  document.getElementById('cbe-target-runtime').value = '';
+  document.getElementById('cbe-status').textContent = '';
+  const fallbackEl = document.getElementById('cbe-fallback-choice');
+  if (fallbackEl) { fallbackEl.style.display = 'none'; fallbackEl.innerHTML = ''; }
+  document.getElementById('cutBulkEditModalBackdrop').classList.add('active');
+}
+function closeCutBulkEditModal_() {
+  document.getElementById('cutBulkEditModalBackdrop').classList.remove('active');
+}
+function runCutBulkEdit_() {
+  const scope = cutBulkEditScope_();
+  const instruction = document.getElementById('cbe-instruction').value.trim();
+  const targetRuntimeSec = Number(document.getElementById('cbe-target-runtime').value) || 0;
+  const statusEl = document.getElementById('cbe-status');
+  const startBtn = document.getElementById('cbe-start-btn');
+  if (!scope.targets.length) { showToast('수정할 컷이 없습니다'); return; }
+  if (!instruction) { showToast('수정 지시를 입력해주세요'); return; }
+  startBtn.disabled = true;
+  statusEl.textContent = `"${scope.label}" 컷 ${scope.targets.length}개에 지시를 반영하는 중…`;
+  const prompt = buildCutBulkEditPrompt_(scope.targets, instruction, targetRuntimeSec);
+  withRateLimitRetry_(() => callTextAiHybrid_(prompt), statusEl, '컷리스트 일괄 수정')
+    .then(data => {
+      if (data.error) throw new Error(data.error);
+      const { cuts: updates, deleteIds } = parseCutBulkEditReply_(data.reply);
+      const targetIds = new Set(scope.targets.map(c => c.id));
+      let updatedCount = 0, addedCount = 0, deletedCount = 0;
+      const now = Date.now();
+      // (1) 삭제 — 지정된 id가 이번 수정 범위 안에 있을 때만 실제로 지운다(범위 밖 id를 AI가 잘못 적어도
+      // 무관한 다른 프로젝트 컷이 지워지지 않도록).
+      const toDelete = new Set((deleteIds || []).filter(id => targetIds.has(id)));
+      if (toDelete.size) {
+        cuts.filter(c => toDelete.has(c.id)).forEach(c => { moveToTrash_('cuts', c); deletedIds.cuts.push(c.id); deletedCount++; });
+        cuts = cuts.filter(c => !toDelete.has(c.id));
+      }
+      // (2) 수정 — id가 있고 이번 범위 안의 기존 컷과 일치하면 내용만 갱신(썸네일·연결자료·시댄스 프롬프트·
+      // 순서·프로젝트는 그대로 보존).
+      const byId = {};
+      cuts.forEach(c => { byId[c.id] = c; });
+      const newOnes = [];
+      (updates || []).forEach(u => {
+        if (u.id && targetIds.has(u.id) && byId[u.id]) {
+          const c = byId[u.id];
+          ['scene', 'cutNo', 'description', 'transition', 'shotType', 'cameraMove', 'notes'].forEach(k => { if (u[k] !== '') c[k] = u[k]; });
+          if (u.durationSec) c.durationSec = u.durationSec;
+          c.updatedAt = now;
+          updatedCount++;
+        } else {
+          newOnes.push(u);
+        }
+      });
+      // (3) 추가 — id 없이(또는 범위 밖 id로) 온 항목은 새 컷으로 취급해 이번 범위(프로젝트) 맨 뒤에 붙인다.
+      if (newOnes.length) {
+        const sameGroup = cuts.filter(c => (c.projectId || '') === (scope.projectFilter || ''));
+        let order = sameGroup.length ? Math.max(...sameGroup.map(c => c.order || 0)) : 0;
+        newOnes.forEach(u => {
+          order += 1;
+          cuts.push({
+            id: genId_('cut'), projectId: scope.projectFilter || '', order,
+            scene: u.scene, cutNo: u.cutNo, description: u.description, transition: u.transition,
+            shotType: u.shotType, cameraMove: u.cameraMove, durationSec: u.durationSec, notes: u.notes,
+            status: CUT_STATUS_OPTIONS_[0], thumbDataUrl: '', linkedAssetIds: [], sourceType: 'ai', seedancePrompt: '', updatedAt: now,
+          });
+          addedCount++;
+        });
+      }
+      renderCuts(); doAutoSave(); // AI 일괄수정도 드물고 중요한 변경이라 즉시 저장(사유는 스토리보드 기획 분기 주석 참고)
+      renderTrash();
+      statusEl.textContent = `✅ 완료 — 수정 ${updatedCount}개 · 추가 ${addedCount}개 · 삭제 ${deletedCount}개`;
+      showToast(`일괄 수정 완료 (수정 ${updatedCount} · 추가 ${addedCount} · 삭제 ${deletedCount})`);
+    })
+    .catch(err => { statusEl.textContent = `⚠️ 일괄 수정 실패: ${err.message}`; })
+    .then(() => { startBtn.disabled = false; });
 }
 // 스프레드시트(엑셀/CSV) 헤더를 흔한 한국어/영어 표현으로 매칭해서 컷 필드에 매핑한다. 매칭되는 헤더가
 // 하나도 없으면 첫 번째 컬럼값을 통째로 설명(description)에 넣어서, 어떤 표를 올려도 최소한 내용이 통째로
@@ -7662,6 +7883,7 @@ function openCutAiImportModal_() {
   projSel.innerHTML = '<option value="">(미지정)</option>' + projects.map(p => `<option value="${p.id}">${escapeHtml_(p.name)}</option>`).join('');
   projSel.value = curFilter || '';
   document.getElementById('cai-context').value = '';
+  document.getElementById('cai-target-runtime').value = '';
   cutAiProjectChanged_(); // 프로젝트가 미리 선택돼 있었으면(필터에서 넘어온 경우) 비고란으로 바로 채워준다
   document.getElementById('cai-files').value = '';
   document.getElementById('cai-status').textContent = '';
@@ -7737,6 +7959,7 @@ function runCutAiImport_() {
   const files = Array.from(document.getElementById('cai-files').files || []);
   const projectId = document.getElementById('cai-project').value;
   const context = document.getElementById('cai-context').value.trim();
+  const targetRuntimeSec = Number(document.getElementById('cai-target-runtime').value) || 0;
   const statusEl = document.getElementById('cai-status');
   const startBtn = document.getElementById('cai-start-btn');
   // 파일도 없고 키워드/제작의도도 비어있으면 AI가 뭘 만들어야 할지 근거가 아예 없으니 그때만 막는다.
@@ -7764,11 +7987,14 @@ function runCutAiImport_() {
   // 텍스트만으로 새로 기획하는 별도 경로로 처리하고 끝낸다(아래 파일별 runSequential 흐름은 타지 않음).
   if (!files.length) {
     statusEl.textContent = `시작: ${startedAt.toLocaleTimeString('ko-KR')} · 키워드/제작의도만으로 스토리보드를 새로 기획하는 중…`;
-    withRateLimitRetry_(() => callTextAiWithFallbackChoice_(buildCutTextGenPrompt_(context)), statusEl, '스토리보드 기획')
+    withRateLimitRetry_(() => callTextAiWithFallbackChoice_(buildCutTextGenPrompt_(context, targetRuntimeSec)), statusEl, '스토리보드 기획')
       .then(data => {
         if (data.error) throw new Error(data.error);
         appendCuts(parseCutAiReply_(data.reply), 'ai');
-        renderCuts(); queueAutoSave();
+        // AI 생성처럼 드물고 확실히 중요한 변경은, 잦은 타이핑용 900ms 디바운스(queueAutoSave)를 그대로
+        // 타지 않고 즉시 저장한다(doAutoSave) — 저장되기 전에 새로고침해서 방금 만든 컷을 잃어버리는
+        // 사고를 최대한 줄이기 위함.
+        renderCuts(); doAutoSave();
       })
       .catch(err => { statusEl.textContent += `\n⚠️ 스토리보드 기획 실패: ${err.message}`; })
       .then(() => {
@@ -7790,7 +8016,7 @@ function runCutAiImport_() {
     if (isSpreadsheet) {
       return parseSpreadsheetFile_(file).then(rows => {
         appendCuts(rowsToCuts_(rows), 'import');
-        renderCuts(); queueAutoSave();
+        renderCuts(); doAutoSave(); // 즉시 저장 — 사유는 위 "스토리보드 기획" 분기 주석 참고
       }).catch(err => { statusEl.textContent += `\n⚠️ "${file.name}" 표를 읽지 못했습니다: ${err.message}`; });
     }
     if (isPdf) {
@@ -7799,7 +8025,7 @@ function runCutAiImport_() {
         return withRateLimitRetry_(() => callVisionAiWithFallbackChoice_(buildCutSplitPrompt_(context), imgDataUrl), statusEl, `${file.name} ${pageIdx + 1}페이지`).then(data => {
           if (data.error) throw new Error(data.error);
           appendCuts(parseCutAiReply_(data.reply), 'ai');
-          renderCuts(); queueAutoSave();
+          renderCuts(); doAutoSave(); // 즉시 저장 — 사유는 위 "스토리보드 기획" 분기 주석 참고
         }).catch(err => { statusEl.textContent += `\n⚠️ "${file.name}" ${pageIdx + 1}페이지 분석 실패: ${err.message}`; });
       })).catch(err => { statusEl.textContent += `\n⚠️ "${file.name}" PDF를 읽지 못했습니다: ${err.message}`; });
     }
@@ -7809,7 +8035,7 @@ function runCutAiImport_() {
       ).then(data => {
         if (data.error) throw new Error(data.error);
         appendCuts(parseCutAiReply_(data.reply), 'ai');
-        renderCuts(); queueAutoSave();
+        renderCuts(); doAutoSave(); // 즉시 저장 — 사유는 위 "스토리보드 기획" 분기 주석 참고
       }).catch(err => { statusEl.textContent += `\n⚠️ "${file.name}" 분석 실패: ${err.message}`; });
     }
     statusEl.textContent += `\n⚠️ "${file.name}"은(는) 지원하지 않는 형식입니다(이미지/PDF/엑셀/CSV만 가능).`;
