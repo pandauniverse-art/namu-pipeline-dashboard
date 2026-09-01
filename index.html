@@ -138,7 +138,7 @@
   }
   .brand-row { display: flex; align-items: center; gap: 13px; }
   .brand-mark {
-    flex-shrink: 0; width: 42px; height: 42px; border-radius: var(--radius-sm);
+    flex-shrink: 0; width: 84px; height: 84px; border-radius: var(--radius-sm);
     display: flex; align-items: center; justify-content: center; overflow: hidden;
   }
   .brand-mark img { width: 100%; height: 100%; object-fit: contain; }
@@ -372,12 +372,12 @@
   .side-panel .rev-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
   .side-panel .rev-row label { font-size: 11px; }
   /* ---------- AI 입력 박스 (자연어로 프로젝트/작업 등록·수정) ---------- */
-  .ai-fab { position: fixed; bottom: 22px; right: 22px; z-index: 70; background: var(--text-primary); color: var(--surface-1); border: none; border-radius: 24px; padding: 12px 18px; font-size: 13px; font-weight: 700; cursor: grab; box-shadow: 0 4px 14px rgba(0,0,0,0.2); display: flex; align-items: center; gap: 6px; touch-action: none; user-select: none; }
+  .ai-fab { position: fixed; bottom: 22px; right: 22px; z-index: 70; height: 44px; box-sizing: border-box; background: var(--text-primary); color: var(--surface-1); border: none; border-radius: 24px; padding: 0 18px; font-size: 13px; font-weight: 700; cursor: grab; box-shadow: 0 4px 14px rgba(0,0,0,0.2); display: flex; align-items: center; gap: 6px; touch-action: none; user-select: none; }
   .ai-fab.dragging { cursor: grabbing; opacity: 0.85; }
   .ai-fab .badge-soon { background: var(--warning); color: #1a1400; font-size: 10px; font-weight: 800; border-radius: 10px; padding: 2px 7px; }
   /* AI 입력 버튼 왼쪽에 붙는 동기화 상태 표시 — 예전엔 헤더 안에 있었지만, 헤더를 로고 위주로 정리하면서
      "지금 저장 중/저장됨" 같은 상태를 계속 눈에 띄게 두기 위해 AI 입력 버튼 옆(고정 위치)으로 옮겼다. */
-  .sync-status-fab { position: fixed; bottom: 22px; right: 148px; z-index: 70; font-size: 11.5px; color: var(--text-muted); background: var(--surface-1); border: 1px solid var(--border); border-radius: 14px; padding: 8px 14px; box-shadow: var(--shadow-sm); max-width: 240px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .sync-status-fab { position: fixed; bottom: 22px; right: 150px; z-index: 70; height: 44px; box-sizing: border-box; display: flex; align-items: center; font-size: 11.5px; color: var(--text-muted); background: var(--surface-1); border: 1px solid var(--border); border-radius: 22px; padding: 0 16px; box-shadow: var(--shadow-sm); max-width: 260px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .ai-panel .badge-soon-inline { display: inline-block; background: var(--warning); color: #1a1400; font-size: 11px; font-weight: 800; border-radius: 10px; padding: 2px 8px; margin-left: 6px; vertical-align: middle; }
   .onboarding-backdrop { position: fixed; inset: 0; z-index: 220; background: rgba(0,0,0,0.5); display: none; align-items: center; justify-content: center; padding: 20px; }
   .onboarding-backdrop.active { display: flex; }
@@ -448,7 +448,7 @@
   .color-swatch.auto.active { border-color: var(--text-primary); color: var(--text-primary); }
   /* ---------- 모바일 화면 최적화 ---------- */
   @media (max-width: 760px) {
-    .brand-mark { width: 34px; height: 34px; font-size: 11px; }
+    .brand-mark { width: 60px; height: 60px; }
     header h1 { font-size: 15px; }
     main { padding: 16px 12px 90px; }
     nav.tabs { padding: 8px 10px 0; gap: 0; overflow-x: auto; flex-wrap: nowrap; -webkit-overflow-scrolling: touch; }
@@ -466,8 +466,8 @@
     .modal { padding: 18px; max-height: 92vh; }
     .modal-backdrop { padding: 10px; }
     .ai-panel { right: 10px; left: 10px; width: auto; bottom: 72px; height: 70vh; }
-    .ai-fab { right: 14px; bottom: 14px; padding: 10px 14px; font-size: 12.5px; }
-    .sync-status-fab { right: 14px; bottom: 60px; max-width: 160px; font-size: 11px; }
+    .ai-fab { right: 14px; bottom: 14px; height: 40px; padding: 0 14px; font-size: 12.5px; }
+    .sync-status-fab { right: 14px; bottom: 62px; height: 36px; max-width: 200px; font-size: 11px; }
     .side-panel { width: 100%; max-width: 100%; }
     .bar-row .bar-label { width: 96px; font-size: 11px; }
     .filter-row { gap: 6px; }
