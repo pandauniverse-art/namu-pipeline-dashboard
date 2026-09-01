@@ -139,10 +139,9 @@
   .brand-row { display: flex; align-items: center; gap: 13px; }
   .brand-mark {
     flex-shrink: 0; width: 42px; height: 42px; border-radius: var(--radius-sm);
-    background: var(--text-primary); color: var(--surface-1);
-    display: flex; align-items: center; justify-content: center;
-    font-size: 13px; font-weight: 800; letter-spacing: -0.03em; line-height: 1;
+    display: flex; align-items: center; justify-content: center; overflow: hidden;
   }
+  .brand-mark img { width: 100%; height: 100%; object-fit: contain; }
   header h1 { font-size: 18px; margin: 0; font-weight: 800; letter-spacing: -0.015em; }
   header h1 .brand-divider { color: var(--text-muted); font-weight: 500; margin: 0 1px; }
   header .sub { font-size: 12px; color: var(--text-muted); margin-top: 3px; }
@@ -376,6 +375,9 @@
   .ai-fab { position: fixed; bottom: 22px; right: 22px; z-index: 70; background: var(--text-primary); color: var(--surface-1); border: none; border-radius: 24px; padding: 12px 18px; font-size: 13px; font-weight: 700; cursor: grab; box-shadow: 0 4px 14px rgba(0,0,0,0.2); display: flex; align-items: center; gap: 6px; touch-action: none; user-select: none; }
   .ai-fab.dragging { cursor: grabbing; opacity: 0.85; }
   .ai-fab .badge-soon { background: var(--warning); color: #1a1400; font-size: 10px; font-weight: 800; border-radius: 10px; padding: 2px 7px; }
+  /* AI 입력 버튼 왼쪽에 붙는 동기화 상태 표시 — 예전엔 헤더 안에 있었지만, 헤더를 로고 위주로 정리하면서
+     "지금 저장 중/저장됨" 같은 상태를 계속 눈에 띄게 두기 위해 AI 입력 버튼 옆(고정 위치)으로 옮겼다. */
+  .sync-status-fab { position: fixed; bottom: 22px; right: 148px; z-index: 70; font-size: 11.5px; color: var(--text-muted); background: var(--surface-1); border: 1px solid var(--border); border-radius: 14px; padding: 8px 14px; box-shadow: var(--shadow-sm); max-width: 240px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .ai-panel .badge-soon-inline { display: inline-block; background: var(--warning); color: #1a1400; font-size: 11px; font-weight: 800; border-radius: 10px; padding: 2px 8px; margin-left: 6px; vertical-align: middle; }
   .onboarding-backdrop { position: fixed; inset: 0; z-index: 220; background: rgba(0,0,0,0.5); display: none; align-items: center; justify-content: center; padding: 20px; }
   .onboarding-backdrop.active { display: flex; }
@@ -465,6 +467,7 @@
     .modal-backdrop { padding: 10px; }
     .ai-panel { right: 10px; left: 10px; width: auto; bottom: 72px; height: 70vh; }
     .ai-fab { right: 14px; bottom: 14px; padding: 10px 14px; font-size: 12.5px; }
+    .sync-status-fab { right: 14px; bottom: 60px; max-width: 160px; font-size: 11px; }
     .side-panel { width: 100%; max-width: 100%; }
     .bar-row .bar-label { width: 96px; font-size: 11px; }
     .filter-row { gap: 6px; }
@@ -489,19 +492,14 @@
 <body>
 <!-- ---------- 로그인 게이트: namucreative.com 구글 계정으로 로그인해야 화면이 보임 ---------- -->
 <div id="authGate" style="position:fixed; inset:0; z-index:200; background:var(--surface-2); display:flex; align-items:center; justify-content:center; flex-direction:column; gap:14px;">
-  <div style="font-size:16px; font-weight:800;">나무씨크리에이티브 · 파이프라인 대시보드</div>
+  <img src="Logo.png" alt="나무씨크리에이티브" style="height:36px; width:auto;">
   <div id="authGateMsg" style="font-size:13px; color:var(--text-muted);">로그인 상태 확인 중…</div>
   <button class="primary" id="authGateSignInBtn" style="display:none;" onclick="signInWithGoogle()">Google 계정으로 로그인</button>
   <button id="authGateSignOutBtn" style="display:none;" onclick="signOutUser()">로그아웃</button>
 </div>
 <header>
   <div class="brand-row">
-    <div class="brand-mark" aria-hidden="true">나무</div>
-    <div>
-      <h1>나무씨크리에이티브 <span class="brand-divider">·</span> 파이프라인 통합 대시보드</h1>
-      <div class="sub">입찰 · 프로덕션 파이프라인 · 작업 진행 현황 통합 관리 (v1 프로토타입)</div>
-      <div class="sub" id="syncStatus" style="margin-top:2px;">불러오는 중…</div>
-    </div>
+    <div class="brand-mark"><img src="Logo.png" alt="나무씨크리에이티브 로고"></div>
   </div>
   <div class="header-actions">
     <button onclick="toggleTheme()">🌗 테마</button>
@@ -1435,6 +1433,7 @@
     </div>
   </div>
 </div>
+<div class="sync-status-fab" id="syncStatus">불러오는 중…</div>
 <button class="ai-fab" id="aiFab" onclick="toggleAiPanel()">🤖 AI 입력</button>
 <div class="ai-panel" id="aiPanel">
   <div class="ai-panel-header" id="aiPanelHeader" style="display:flex; align-items:center; justify-content:space-between;">
