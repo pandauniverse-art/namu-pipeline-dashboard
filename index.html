@@ -540,6 +540,7 @@
       <button class="tab-more-item" data-tab="trash">휴지통</button>
       <button class="tab-more-item" data-tab="users" id="tabUsersMenuItem" style="display:none;">팀원 관리</button>
       <button class="tab-more-item" data-tab="tagmanager">태그 관리</button>
+      <button class="tab-more-item" data-tab="skillmanager">AI 스킬 관리</button>
     </div>
   </div>
 </nav>
@@ -1007,6 +1008,17 @@
       <datalist id="tagManageDatalist"></datalist>
       <div id="tagManageList"></div>
     </div>
+  </section>
+  <!-- SKILLMANAGER (AI 스킬 관리 — 대시보드 코드가 AI를 호출할 때 쓰는 지시문 관리) -->
+  <section class="tabpanel" id="tab-skillmanager">
+    <div class="note-box" style="margin-top:0;">
+      여기는 <strong>완성된 프롬프트 결과물</strong>을 저장하는 곳이 아닙니다 — 그건 자료 보관함의 "프롬프트" 자료로 저장하세요.
+      이 화면은 대시보드가 AI를 호출할 때마다 재사용하는 <strong>작업 지시문(스킬)</strong> 자체를 관리하는 곳입니다.
+      아래 목록은 코드의 실제 AI 호출 지점과 연결돼 있어서 새로 추가할 수는 없고, 지시문 내용만 고칠 수 있습니다.
+      지시문을 고치면 그 이후 그 기능으로 만들어지는 모든 결과물의 스타일이 한 번에 바뀝니다.
+      <span id="skillManagerPermNote"></span>
+    </div>
+    <div class="card" id="skillManagerList"></div>
   </section>
 </main>
 <div class="modal-backdrop" id="projectModalBackdrop">
@@ -1564,6 +1576,11 @@ let tagCategories = [];
 // 자료(assets)의 tags 배열 자체는 예전처럼 태그 문자열 배열 그대로 유지한다(검색/필터/내보내기 호환성 유지).
 // 여기서는 그 문자열들을 카테고리별로 묶어서 보여주기 위한 "분류 정보"만 별도로 들고 있는 것.
 let tagAssignments = [];
+// skills: "AI 스킬" 관리 화면에 쓰이는, 대시보드 코드가 AI를 호출할 때 쓰는 지시문(스타일 부분)의 목록.
+// 자료 보관함의 "프롬프트" 자산(특정 컷을 위해 완성된 결과물 하나)과 다르게, 이건 코드의 실제 호출 지점과
+// 연결된(고정된 키를 가진) 항목이라 자유롭게 새로 추가하지는 않고, 각 항목의 스타일 지시문만 수정한다.
+// {id(=key, 코드와 매칭되는 고정 식별자), name, triggerDescription, editableIntro, defaultIntro, usedBy, locked, order, updatedAt}
+let skills = [];
 let idCounter = 1; // 더 이상 ID 생성에 쓰이지 않음(레거시 백업 파일 호환용으로만 유지) — 실제 ID는 genId_()로 생성
 // 새로고침 시 카운터가 1부터 다시 시작되면서 기존 자료와 같은 ID가 생겨 덮어써지는 문제가 있었음.
 // 그래서 ID는 시간값+임의값 조합으로 생성해 충돌 가능성을 사실상 없앤다.
@@ -1668,8 +1685,8 @@ const db = firebase.firestore();
 // 대신 이 방식을 쓴다 — Vercel 프록시가 서버 쪽에서만 GitHub API를 호출하므로 토큰이 브라우저에 노출되지 않는다.
 // 이미지가 수백~수천 장으로 늘어나도 로그인할 때 Firestore에서 받아오는 데이터양은 가벼운 텍스트 수준으로
 // 유지되고, 실제 이미지 픽셀 데이터는 화면에 보일 때만 그 CDN 주소로 브라우저가 지연 로딩한다.)
-const COLLECTIONS = ['projects', 'aiTasks', 'scheduleTasks', 'assets', 'cuts', 'activityLog', 'trash', 'calendarNotes', 'users', 'tagCategories', 'tagAssignments', 'reports'];
-const COLLECTION_LABEL_ = { projects: '프로젝트', aiTasks: '작업', scheduleTasks: '일정 계산기 작업', assets: '자료', cuts: '컷리스트', activityLog: '활동 로그', trash: '휴지통', calendarNotes: '달력 일정', users: '팀원', tagCategories: '태그 카테고리', tagAssignments: '태그 분류', reports: '리포트 이력' };
+const COLLECTIONS = ['projects', 'aiTasks', 'scheduleTasks', 'assets', 'cuts', 'activityLog', 'trash', 'calendarNotes', 'users', 'tagCategories', 'tagAssignments', 'reports', 'skills'];
+const COLLECTION_LABEL_ = { projects: '프로젝트', aiTasks: '작업', scheduleTasks: '일정 계산기 작업', assets: '자료', cuts: '컷리스트', activityLog: '활동 로그', trash: '휴지통', calendarNotes: '달력 일정', users: '팀원', tagCategories: '태그 카테고리', tagAssignments: '태그 분류', reports: '리포트 이력', skills: 'AI 스킬' };
 const CLOUD_FUNCTIONS_READY = false; // 자동 이메일점검 등 일부 기능은 Blaze(카드 등록) 전환 후 활성화됩니다
 const AI_PROXY_URL = 'https://namu-ai-proxy.vercel.app/api/ai-input'; // AI 입력 기능은 Vercel 서버리스 함수를 통해 Groq API와 연결됩니다
 const IMAGE_UPLOAD_PROXY_URL = 'https://namu-ai-proxy.vercel.app/api/upload-image'; // 이미지 자료는 이 Vercel 서버리스 함수를 통해 GitHub 저장소에 커밋된다
@@ -1815,8 +1832,8 @@ let autoSaveSuppressed = true; // 초기 로딩 중에는 자동저장을 잠깐
 let hasUnsavedChanges_ = false; // 900ms 자동저장 대기/진행 중인 변경사항이 있는지 — 이 사이에 탭을 닫으면 사라질 수 있어 경고에 사용
 let unsavedGeneration_ = 0; // queueAutoSave가 호출될 때마다 증가 — 저장이 진행되는 도중에 새 변경이 또 들어온 경우를 구분하기 위함
 let deletedIds = {projects: [], aiTasks: [], scheduleTasks: [], assets: [], cuts: [], activityLog: [], trash: [], calendarNotes: [], users: [], tagCategories: [], tagAssignments: [], reports: []}; // 아직 서버에 삭제 반영 안 된 id들
-let lastFlushedAt = {projects: 0, aiTasks: 0, scheduleTasks: 0, assets: 0, cuts: 0, activityLog: 0, trash: 0, calendarNotes: 0, users: 0, tagCategories: 0, tagAssignments: 0, reports: 0}; // 컬렉션별로 마지막에 서버에 반영한 시점 (이 이후 updatedAt인 항목만 다시 씀)
-let snapshotsReady = {projects: false, aiTasks: false, scheduleTasks: false, assets: false, cuts: false, activityLog: false, trash: false, calendarNotes: false, users: false, tagCategories: false, tagAssignments: false, reports: false};
+let lastFlushedAt = {projects: 0, aiTasks: 0, scheduleTasks: 0, assets: 0, cuts: 0, activityLog: 0, trash: 0, calendarNotes: 0, users: 0, tagCategories: 0, tagAssignments: 0, reports: 0, skills: 0}; // 컬렉션별로 마지막에 서버에 반영한 시점 (이 이후 updatedAt인 항목만 다시 씀)
+let snapshotsReady = {projects: false, aiTasks: false, scheduleTasks: false, assets: false, cuts: false, activityLog: false, trash: false, calendarNotes: false, users: false, tagCategories: false, tagAssignments: false, reports: false, skills: false};
 let currentUser = null;
 function isAutoSaveConfigured() {
   return !!currentUser;
@@ -1860,6 +1877,9 @@ function canManageTrash_() { return tierAtLeast_('manager'); } // 휴지통 비�
 // "가져오기(JSON)"는 화면의 데이터를 통째로 교체하는(다른 기기/서버에도 실시간으로 그대로 반영되는)
 // 가장 파급력이 큰 동작이라, 프로젝트 삭제와 같은 관리자 이상 기준으로 제한한다.
 function canImportData_() { return tierAtLeast_('manager'); }
+// AI 스킬(코드가 AI를 호출할 때 쓰는 지시문)을 고치면 팀 전체의 AI 결과물 스타일이 한 번에 바뀌므로,
+// 프로젝트 삭제·휴지통 비우기와 같은 기준(관리자 이상)으로 제한한다. 목록을 "보는 것"은 누구나 가능.
+function canManageSkills_() { return tierAtLeast_('manager'); }
 // 최근 활동 로그(상태변경/보류/AI 자동반영 등 내부 운영 기록)도 대표·관리자만 볼 수 있어야 한다는 요청에 따라
 // 별도 함수로 분리. 지금은 canViewSensitiveFields_와 기준(관리자 이상)이 같지만 의미가 다르므로 분리해둔다.
 function canViewActivityLog_() { return tierAtLeast_('manager'); }
@@ -1888,6 +1908,67 @@ function ensureCurrentUserRegistered_() {
   users.push(rec);
   logActivity_(`👤 "${rec.name}"(${email}) 최초 로그인 — ${TIER_LABEL_[tier]} 권한으로 등록됨`);
   queueAutoSave();
+}
+// ---------- AI 스킬(코드가 AI를 호출할 때 쓰는 지시문) 관리 ----------
+// 자료 보관함의 "프롬프트" 자산(특정 컷을 위해 완성된 결과물)과 달리, 여기 있는 항목들은 코드의 실제
+// AI 호출 지점과 고정된 id(key)로 연결돼 있다. 그래서 이 화면에서 "새 스킬 추가"는 하지 않고(코드와
+// 연결이 안 된 스킬을 만들어봤자 아무 데도 안 쓰이므로), 각 항목의 스타일 지시문(editableIntro)만
+// 수정하게 한다. locked:true인 항목은 JSON 응답 형식을 파싱하는 규칙과 너무 강하게 얽혀 있어(잘못
+// 고치면 그 기능 자체가 깨짐) 이 화면에서는 참고용으로만 보여주고 수정은 막아둔다.
+const DEFAULT_SKILLS_ = [
+  {
+    id: 'cutSplit', order: 1, locked: false,
+    name: '컷 분할(스토리보드 이미지/PDF → 컷리스트)',
+    triggerDescription: '컷리스트 탭에서 스토리보드 이미지나 PDF를 올리고 "분석 시작"을 누를 때',
+    defaultIntro: '이 스토리보드(콘티) 이미지 속 각 컷을 왼쪽 위부터 순서대로 전부 나눠 컷리스트로 정리해줘. 같은 장소/씬의 컷은 scene을 동일하게. 설명은 간결하게 작성해줘.',
+    usedBy: 'runCutAiImport_() → buildCutSplitPrompt_()',
+  },
+  {
+    id: 'cutTextGen', order: 2, locked: false,
+    name: '컷 새로 기획(키워드만으로 컷리스트 생성)',
+    triggerDescription: '컷리스트 탭에서 파일 없이 키워드/제작의도만 입력하고 "분석 시작"을 누를 때',
+    defaultIntro: '이 내용만 보고(참고할 스토리보드 그림은 없음), 실제 영상 제작 현장에서 쓰는 스토리보드(콘티)를 처음부터 새로 기획해서 컷리스트 표 형식으로 작성해줘. 오프닝-전개-마무리 등 전체 흐름이 자연스럽게 이어지도록 장소/씬을 나누고, 같은 장소/씬 안에는 여러 컷을 배치해줘(보통 씬당 2~5컷 정도).',
+    usedBy: 'runCutAiImport_() → buildCutTextGenPrompt_()',
+  },
+  {
+    id: 'cutBulkEdit', order: 3, locked: true,
+    name: '컷 일괄수정(AI)',
+    triggerDescription: '컷리스트 탭에서 "🪄 일괄 수정(AI)"으로 기존 컷 전체에 한 번에 지시를 반영할 때',
+    defaultIntro: '(참고용) 지시문 대부분이 id 보존·delete_ids 같은 JSON 응답 형식 규칙이라, 잘못 고치면 컷이 중복 생성되거나 사라질 수 있어 이 화면에서는 수정을 막아뒀습니다. 실제 지시 내용은 사용자가 모달에서 매번 직접 입력합니다.',
+    usedBy: 'runCutBulkEdit_() → buildCutBulkEditPrompt_()',
+  },
+  {
+    id: 'assetImageAnalyze', order: 4, locked: true,
+    name: '자료 이미지 자동 분석(이름/태그/요약)',
+    triggerDescription: '이미지를 AI 채팅창에 붙여넣거나, 자료 카드에서 "AI 요약 생성"을 누를 때',
+    defaultIntro: '(참고용) 태그를 [현재 대표 키워드/하위 키워드 목록]에서 골라 재사용하게 하는 로직과 강하게 얽혀 있어(잘못 고치면 태그 체계가 깨짐) 이 화면에서는 수정을 막아뒀습니다.',
+    usedBy: 'analyzeImageWithAi_()',
+  },
+  {
+    id: 'chatAssistant', order: 5, locked: true,
+    name: 'AI 채팅 비서(액션 스키마)',
+    triggerDescription: '우측 하단 AI 채팅창에서 프로젝트/작업/자료 등을 추가·수정·삭제해달라고 요청할 때',
+    defaultIntro: '(참고용) 이 스킬은 이 index.html이 아니라 별도 저장소(namu-ai-proxy)의 api/ai-input.js 서버 코드 안에 있습니다. 여기서 고칠 수 없고, 그 코드를 직접 수정해서 배포해야 바뀝니다.',
+    usedBy: 'api/ai-input.js (Vercel 서버리스 함수)',
+  },
+];
+// 팀 전체가 공유하는 skills 컬렉션에 기본 스킬 5종이 없으면 채워 넣는다. id를 key로 고정해뒀기 때문에
+// 여러 사람의 브라우저가 동시에 이 함수를 불러도(경쟁 상태) 그냥 같은 문서를 같은 내용으로 덮어쓸 뿐이라
+// 중복 생성되지 않는다(멱등). 이미 있는 스킬은 절대 덮어쓰지 않는다(사용자가 고쳐둔 editableIntro 보존).
+function ensureDefaultSkillsSeeded_() {
+  let added = false;
+  DEFAULT_SKILLS_.forEach(def => {
+    if (skills.some(s => s.id === def.id)) return;
+    skills.push(Object.assign({ editableIntro: '', updatedAt: Date.now() }, def));
+    added = true;
+  });
+  if (added) queueAutoSave();
+}
+// buildCutSplitPrompt_/buildCutTextGenPrompt_ 등이 하드코딩된 문장 대신 이 함수로 스킬 지시문을 가져온다.
+// 스킬이 아직 안 만들어졌거나(초기 로딩 중) 사용자가 지시문을 비워뒀으면 코드에 있는 기본값으로 자연스럽게 되돌아간다.
+function getSkillIntro_(key, fallback) {
+  const s = skills.find(x => x.id === key);
+  return (s && !s.locked && s.editableIntro && s.editableIntro.trim()) ? s.editableIntro.trim() : fallback;
 }
 // ---------- 태그 분류 체계 (대표 키워드 / 하위 키워드) ----------
 // 대표 키워드(카테고리)는 코드에 고정하지 않고 tagCategories 컬렉션에 저장해서, 화면에서 자유롭게
@@ -1985,7 +2066,7 @@ function isAnyModalOpen_() {
 const COLLECTION_VAR = {
   projects: () => projects, aiTasks: () => aiTasks, scheduleTasks: () => scheduleTasks, assets: () => assets, cuts: () => cuts,
   activityLog: () => activityLog, trash: () => trash, calendarNotes: () => calendarNotes, users: () => users,
-  tagCategories: () => tagCategories, tagAssignments: () => tagAssignments, reports: () => reports,
+  tagCategories: () => tagCategories, tagAssignments: () => tagAssignments, reports: () => reports, skills: () => skills,
 };
 const COLLECTION_SETTER = {
   projects: (v) => { projects = v; }, aiTasks: (v) => { aiTasks = v; },
@@ -1993,7 +2074,7 @@ const COLLECTION_SETTER = {
   activityLog: (v) => { activityLog = v; }, trash: (v) => { trash = v; }, calendarNotes: (v) => { calendarNotes = v; },
   users: (v) => { users = v; },
   tagCategories: (v) => { tagCategories = v; }, tagAssignments: (v) => { tagAssignments = v; },
-  reports: (v) => { reports = v; },
+  reports: (v) => { reports = v; }, skills: (v) => { skills = v; },
 };
 // 각 컬렉션에 실시간 리스너를 붙인다 - 누군가 문서를 추가/수정/삭제하면 즉시(폴링 없이) 반영됨.
 // 모달/사이드패널이 열려있는 동안에는 화면을 다시 그리지 않고 큐에만 쌓아둔다(입력 중 화면이 바뀌는 것 방지).
@@ -2014,6 +2095,7 @@ function attachRealtimeListeners() {
         const reportsPurged = purgeExpiredReports_();
         if (autoSaveSuppressed) autoSaveSuppressed = false; // 아래 ensureCurrentUserRegistered_()의 queueAutoSave가 막히지 않도록 먼저 해제
         ensureCurrentUserRegistered_();
+        ensureDefaultSkillsSeeded_();
         renderAll();
         showSyncStatus('실시간 동기화됨 · ' + new Date().toLocaleTimeString('ko-KR'));
         if (stageMigrated || trashPurged || calNotesMigrated || tagsMigrated || reportsPurged) queueAutoSave();
@@ -2534,7 +2616,7 @@ function schedFullEstimate(tasks) {
   return result;
 }
 // ---------- 탭 전환 (기본 탭 + '더보기' 드롭다운의 고급 탭) ----------
-const MORE_TAB_LABELS = { trash: '휴지통', users: '팀원 관리', tagmanager: '태그 관리' };
+const MORE_TAB_LABELS = { trash: '휴지통', users: '팀원 관리', tagmanager: '태그 관리', skillmanager: 'AI 스킬 관리' };
 const LAST_TAB_STORAGE_KEY = 'namu_pipeline_last_tab_v1';
 // 새로고침해도 보고 있던 탭이 그대로 유지되도록, 탭을 옮길 때마다 localStorage에 기록해둔다.
 function activateTab(tabName) {
@@ -3656,6 +3738,7 @@ function renderAll() {
   updateUsersTabVisibility_();
   updateImportButtonVisibility_();
   renderTagManagerTab_();
+  renderSkillManagerTab_();
 }
 // "가져오기" 버튼은 관리자 이상에게만 보이게 한다(내보내기는 민감 필드를 알아서 가리고 나가는 반면,
 // 가져오기는 전체 데이터를 교체하는 동작이라 등급이 낮은 사용자에게는 아예 노출하지 않는다).
@@ -3796,6 +3879,51 @@ function mergeTag_(fromName, toName) {
   renderAll();
   queueAutoSave();
   showToast(`"${fromName}" → "${toName}"로 태그를 합쳤습니다`);
+}
+// ---------- AI 스킬 관리 (코드가 AI를 호출할 때 쓰는 지시문) ----------
+function renderSkillManagerTab_() {
+  const permNote = document.getElementById('skillManagerPermNote');
+  if (permNote) permNote.textContent = canManageSkills_() ? '' : ' (지시문 수정은 관리자·대표만 할 수 있습니다 — 지금 등급으로는 읽기만 가능합니다.)';
+  const el = document.getElementById('skillManagerList');
+  if (!el) return;
+  const canEdit = canManageSkills_();
+  const sorted = skills.slice().sort((a, b) => (a.order || 0) - (b.order || 0));
+  el.innerHTML = sorted.length ? sorted.map(s => {
+    const isLocked = !!s.locked;
+    const bodyText = isLocked ? s.defaultIntro : (s.editableIntro && s.editableIntro.trim() ? s.editableIntro : s.defaultIntro);
+    const isDefault = !isLocked && (!s.editableIntro || !s.editableIntro.trim());
+    return `<div style="padding:12px 0; border-bottom:1px solid var(--grid);">
+      <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:4px;">
+        <strong style="font-size:13.5px;">${escapeHtml_(s.name)}</strong>
+        ${isLocked ? '<span style="font-size:10.5px; font-weight:700; border-radius:999px; padding:2px 8px; background:var(--surface-2); color:var(--text-muted); border:1px solid var(--border);">🔒 참고용(수정 불가)</span>' : ''}
+        ${(!isLocked && isDefault) ? '<span style="font-size:10.5px; font-weight:700; border-radius:999px; padding:2px 8px; background:var(--surface-2); color:var(--text-muted); border:1px solid var(--border);">기본값 사용 중</span>' : ''}
+      </div>
+      <div style="font-size:11.5px; color:var(--text-muted); margin-bottom:6px;">언제 쓰이나: ${escapeHtml_(s.triggerDescription)} · 연결된 코드: <code>${escapeHtml_(s.usedBy)}</code></div>
+      <textarea data-skill-id="${escapeHtml_(s.id)}" ${(!canEdit || isLocked) ? 'disabled' : ''} rows="3" style="width:100%; font-size:12.5px;" onchange="onSkillIntroChanged_('${s.id}', this.value)">${escapeHtml_(bodyText || '')}</textarea>
+      ${(!isLocked && canEdit) ? `<div style="margin-top:6px;"><button type="button" style="font-size:11px; padding:3px 9px;" onclick="resetSkillIntro_('${s.id}')" ${isDefault ? 'disabled' : ''}>기본값으로 초기화</button></div>` : ''}
+    </div>`;
+  }).join('') : '<div class="empty-state">스킬 목록을 불러오는 중입니다…</div>';
+}
+function onSkillIntroChanged_(id, value) {
+  if (!canManageSkills_()) { showToast('지시문 수정은 관리자·대표만 할 수 있습니다'); renderSkillManagerTab_(); return; }
+  const s = skills.find(x => x.id === id);
+  if (!s || s.locked) return;
+  s.editableIntro = value;
+  s.updatedAt = Date.now();
+  renderSkillManagerTab_();
+  queueAutoSave();
+  showToast(`"${s.name}" 스킬 지시문을 저장했습니다`);
+}
+function resetSkillIntro_(id) {
+  if (!canManageSkills_()) { showToast('지시문 수정은 관리자·대표만 할 수 있습니다'); return; }
+  const s = skills.find(x => x.id === id);
+  if (!s || s.locked) return;
+  if (!confirm(`"${s.name}" 스킬 지시문을 기본값으로 되돌릴까요?`)) return;
+  s.editableIntro = '';
+  s.updatedAt = Date.now();
+  renderSkillManagerTab_();
+  queueAutoSave();
+  showToast('기본값으로 되돌렸습니다');
 }
 // ---------- 파이프라인 가이드 (내부 교육/참고용) ----------
 function renderGuide() {
@@ -7450,19 +7578,56 @@ function exportCutsPromptFile_() {
 // 아니라 배열이라 findJsonObject_(reply, 'cuts')로 {"cuts":[...]} 형태의 래퍼 객체를 찾도록 설계했다.
 // context(키워드/제작의도): 스토리보드 그림만 봐서는 알 수 없는 톤·용도·강조 포인트를 사용자가 미리 적어두면
 // AI가 설명·샷사이즈를 그 의도에 맞게 채울 수 있다 — analyzeImageWithAi_()의 contextNote와 같은 원칙.
+// AI가 스토리보드를 "읽고 분석"하는 데는 자료 보관함에 올리는 원본 품질(최대 1600px)까지는 필요
+// 없다 — 손그림/텍스트가 보일 정도면 충분하다. 여기서만 더 작게 리사이즈해서 이미지 입력 토큰 사용량을
+// 줄이면(자료 보관함용 원본 화질에는 영향 없음) 클라우드 rate limit에 걸릴 확률이 줄어든다.
+const CUT_AI_IMAGE_MAX_DIM_ = 1100;
+const CUT_AI_IMAGE_JPEG_QUALITY_ = 0.72;
+function resizeImageForAiAnalysis_(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = e => {
+      const img = new Image();
+      img.onload = () => {
+        let w = img.width, h = img.height;
+        if (w > CUT_AI_IMAGE_MAX_DIM_ || h > CUT_AI_IMAGE_MAX_DIM_) {
+          const scale = CUT_AI_IMAGE_MAX_DIM_ / Math.max(w, h);
+          w = Math.round(w * scale);
+          h = Math.round(h * scale);
+        }
+        const canvas = document.createElement('canvas');
+        canvas.width = w; canvas.height = h;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, w, h);
+        resolve({ dataUrl: canvas.toDataURL('image/jpeg', CUT_AI_IMAGE_JPEG_QUALITY_), width: w, height: h });
+      };
+      img.onerror = reject;
+      img.src = e.target.result;
+    };
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+// 사용자 요구사항: 클라이언트 자료(이미지/PDF)가 컷이 많을수록 AI 응답이 길어져서, 안 그래도 낮은
+// 클라우드 rate limit(요금제 TPM 한도)에 더 자주 걸린다. 프롬프트 자체를 짧게, 그리고 각 컷 설명 길이도
+// 짧게 요청하면 요청+응답 토큰 총량이 줄어서 rate limit에 걸릴 확률과 응답이 중간에 잘릴 확률이 둘 다
+// 낮아진다(근본적인 요금제 한도 자체를 늘리는 건 아니지만, 실사용에서 체감되는 실패 빈도를 줄여준다).
 function buildCutSplitPrompt_(context) {
-  const contextLine = context && context.trim() ? `참고로 이 영상의 제작 의도/키워드는 다음과 같아: "${context.trim()}". 이 맥락을 반영해서 내용·샷사이즈를 판단해줘.\n` : '';
-  return contextLine + '이 이미지는 영상 제작용 스토리보드(콘티)의 한 페이지야. 이 안에 그려진 각 컷(장면)을 왼쪽 위부터 순서대로 전부 나눠서, 실제 영상 제작 현장에서 쓰는 컷리스트 표 형식으로 정리해줘. ' +
-    '같은 장소/씬 안에 여러 컷이 있으면(보통 그렇습니다) 그 컷들 전부 같은 scene 값을 갖게 해줘. ' +
-    '다음 JSON 형식으로만, 다른 설명 없이 답해줘:\n' +
-    '{"cuts": [{"scene": "이 컷이 속한 장소/씬 이름(예: \'#S01_이른 아침_주택가 도로\'처럼 시간대·장소가 드러나게, 스토리보드에 씬 구분이 안 보이면 배경이 바뀔 때마다 새로 지어줘)", ' +
-    '"cutNo": "이미지에 컷 번호가 적혀 있으면 그대로, 없으면 씬 안에서 순서대로 1부터", ' +
-    '"description": "이 컷의 장면/액션/카메라 앵글을 25~40자 내외 한국어로 설명(실제 컷리스트처럼 구체적으로)", ' +
-    '"transition": "다음 컷으로 넘어갈 때의 트랜지션(컷/디졸브/페이드인/페이드아웃/와이프 종류/드론 상승 등, 특별한 게 없으면 \'-\')", ' +
-    '"shotType": "샷 사이즈(익스트림롱샷/롱샷/풀샷/미디엄샷/클로즈업/익스트림클로즈업 중 하나, 모르면 빈 문자열)", ' +
-    '"cameraMove": "카메라 무브먼트(고정/팬/틸트/줌인/줌아웃/트래킹/크레인/핸드헬드 등, 모르면 빈 문자열)", ' +
-    '"durationSec": 예상_길이_초_숫자_모르면_0, "notes": "대사·자막·효과 등 그 외 참고 메모"}]}\n' +
-    '이미지 한 장에 컷이 여러 개 그려져 있으면(보통 그렇습니다) 빠짐없이 배열에 전부 담아줘.';
+  const contextLine = context && context.trim() ? `제작 의도: "${context.trim()}" (내용·샷사이즈 판단에 참고).\n` : '';
+  // 아래 지시문(스타일 부분)은 "AI 스킬 관리" 화면에서 팀이 직접 고칠 수 있다 — 여기서는 그 값(또는
+  // 스킬이 아직 없거나 비워졌으면 기본값)을 가져와 쓰고, JSON 응답 형식 자체는 파싱 로직과 얽혀 있어
+  // 코드에 고정해둔다(스킬 지시문이 무엇이든 항상 같은 형식으로 답하도록 강제).
+  const intro = getSkillIntro_('cutSplit', '이 스토리보드(콘티) 이미지 속 각 컷을 왼쪽 위부터 순서대로 전부 나눠 컷리스트로 정리해줘. 같은 장소/씬의 컷은 scene을 동일하게. 설명은 간결하게 작성해줘.');
+  return contextLine + intro + ' ' +
+    '다른 설명 없이 아래 JSON만 답해줘:\n' +
+    '{"cuts":[{"scene":"장소/씬(예: #S01_주택가 도로, 씬 구분이 안 보이면 배경 바뀔 때마다 새로 지음)",' +
+    '"cutNo":"이미지에 번호가 있으면 그대로, 없으면 씬 내 순서",' +
+    '"description":"장면/액션/앵글 20~30자 내외",' +
+    '"transition":"전환(컷/디졸브/페이드인/페이드아웃/와이프/드론상승, 없으면 -)",' +
+    '"shotType":"샷사이즈(익스트림롱샷/롱샷/풀샷/미디엄샷/클로즈업/익스트림클로즈업, 모르면 빈 문자열)",' +
+    '"cameraMove":"무브먼트(고정/팬/틸트/줌인/줌아웃/트래킹/크레인/핸드헬드, 모르면 빈 문자열)",' +
+    '"durationSec":숫자_모르면_0,"notes":"대사·자막 등 핵심만 15자 내외(없으면 빈 문자열)"}]}\n' +
+    '컷이 여러 개면(보통 그렇습니다) 빠짐없이 전부 배열에 담아줘.';
 }
 // ---------- 로컬 AI(사내 컴퓨터에서 직접 돌리는 OpenAI 호환 서버) 설정 — 팀 공용 데이터가 아니라
 // 이 브라우저에만 남는 개인 설정이라 Firestore가 아니라 localStorage에 저장한다. ----------
@@ -7587,9 +7752,9 @@ function buildCutTextGenPrompt_(context, targetRuntimeSec) {
   const lengthGuide = runtime > 0
     ? `전체 영상 러닝타임은 정확히 ${runtime}초로 맞춰줘. 컷별 durationSec의 합이 ${runtime}초에 최대한 가깝도록(±5% 이내) 배분하고, 컷 하나당 보통 2~6초 정도로 나눠서 총 러닝타임에 맞는 컷 개수를 스스로 정해줘. `
     : '전체 분량은 15~25컷 정도로 구성해줘(너무 짧거나 과하게 길지 않게). ';
-  return contextLine +
-    '이 내용만 보고(참고할 스토리보드 그림은 없음), 실제 영상 제작 현장에서 쓰는 스토리보드(콘티)를 처음부터 새로 기획해서 컷리스트 표 형식으로 작성해줘. ' +
-    '오프닝-전개-마무리 등 전체 흐름이 자연스럽게 이어지도록 장소/씬을 나누고, 같은 장소/씬 안에는 여러 컷을 배치해줘(보통 씬당 2~5컷 정도). ' +
+  // 지시문(스타일 부분)은 "AI 스킬 관리" 화면에서 고칠 수 있다 — buildCutSplitPrompt_와 같은 원칙.
+  const intro = getSkillIntro_('cutTextGen', '이 내용만 보고(참고할 스토리보드 그림은 없음), 실제 영상 제작 현장에서 쓰는 스토리보드(콘티)를 처음부터 새로 기획해서 컷리스트 표 형식으로 작성해줘. 오프닝-전개-마무리 등 전체 흐름이 자연스럽게 이어지도록 장소/씬을 나누고, 같은 장소/씬 안에는 여러 컷을 배치해줘(보통 씬당 2~5컷 정도).');
+  return contextLine + intro + ' ' +
     lengthGuide +
     '다음 JSON 형식으로만, 다른 설명 없이 답해줘:\n' +
     '{"cuts": [{"scene": "이 컷이 속한 장소/씬 이름(예: \'#S01_이른 아침_주택가 도로\'처럼 시간대·장소가 드러나게)", ' +
@@ -7744,12 +7909,16 @@ function cutBulkEditScope_() {
   const targets = cuts.filter(c => !projectFilter || (c.projectId || '') === projectFilter);
   return { projectFilter, label, targets };
 }
+let cutBulkEditRunning_ = false; // 스토리보드 자동생성의 cutAiImportRunning_과 같은 목적 — 진행 중인데 버튼이 리셋되는 걸 막음
 function openCutBulkEditModal_() {
   const scope = cutBulkEditScope_();
   document.getElementById('cbe-scope-label').textContent = `"${scope.label}" — 현재 컷 ${scope.targets.length}개`;
   document.getElementById('cbe-instruction').value = '';
   document.getElementById('cbe-target-runtime').value = '';
-  document.getElementById('cbe-status').textContent = '';
+  if (!cutBulkEditRunning_) {
+    document.getElementById('cbe-status').textContent = '';
+    document.getElementById('cbe-start-btn').disabled = false;
+  }
   const fallbackEl = document.getElementById('cbe-fallback-choice');
   if (fallbackEl) { fallbackEl.style.display = 'none'; fallbackEl.innerHTML = ''; }
   document.getElementById('cutBulkEditModalBackdrop').classList.add('active');
@@ -7765,7 +7934,14 @@ function runCutBulkEdit_() {
   const startBtn = document.getElementById('cbe-start-btn');
   if (!scope.targets.length) { showToast('수정할 컷이 없습니다'); return; }
   if (!instruction) { showToast('수정 지시를 입력해주세요'); return; }
+  // 프로젝트 필터를 안 걸어두면(전체) 다른 사람이 다른 프로젝트에서 정리 중인 컷까지 전부 이번
+  // 일괄수정 범위에 들어가버리므로, 그 경우에만 한 번 더 확인한다(필터가 걸려있으면 그 프로젝트로만
+  // 범위가 좁혀지니 별도 확인 없이 진행).
+  if (!scope.projectFilter && !confirm(`지금 프로젝트 필터가 "전체"라서, 등록된 모든 프로젝트의 컷 ${scope.targets.length}개가 이번 일괄 수정 대상이 됩니다. 계속할까요? (특정 프로젝트만 수정하려면 닫고 상단 필터에서 프로젝트를 먼저 선택해주세요)`)) {
+    return;
+  }
   startBtn.disabled = true;
+  cutBulkEditRunning_ = true;
   statusEl.textContent = `"${scope.label}" 컷 ${scope.targets.length}개에 지시를 반영하는 중…`;
   const prompt = buildCutBulkEditPrompt_(scope.targets, instruction, targetRuntimeSec);
   withRateLimitRetry_(() => callTextAiHybrid_(prompt), statusEl, '컷리스트 일괄 수정')
@@ -7819,7 +7995,7 @@ function runCutBulkEdit_() {
       showToast(`일괄 수정 완료 (수정 ${updatedCount} · 추가 ${addedCount} · 삭제 ${deletedCount})`);
     })
     .catch(err => { statusEl.textContent = `⚠️ 일괄 수정 실패: ${err.message}`; })
-    .then(() => { startBtn.disabled = false; });
+    .then(() => { startBtn.disabled = false; cutBulkEditRunning_ = false; });
 }
 // 스프레드시트(엑셀/CSV) 헤더를 흔한 한국어/영어 표현으로 매칭해서 컷 필드에 매핑한다. 매칭되는 헤더가
 // 하나도 없으면 첫 번째 컬럼값을 통째로 설명(description)에 넣어서, 어떤 표를 올려도 최소한 내용이 통째로
@@ -7880,8 +8056,11 @@ function loadScriptOnce_(src) {
 const PDFJS_CDN_ = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.0.379/pdf.min.js';
 const PDFJS_WORKER_CDN_ = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.0.379/pdf.worker.min.js';
 const XLSX_CDN_ = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
-// PDF 파일의 각 페이지를 캔버스에 그려서 이미지(JPEG data URL) 배열로 바꾼다. 페이지가 이미 스토리보드
-// 여러 컷을 한 장에 담고 있는 경우가 많아서, 이미지 업로드와 동일한 해상도 상한(ASSET_MAX_DIM)을 맞춘다.
+// PDF 파일의 각 페이지를 캔버스에 그려서 페이지별 이미지로 바꾼다. 자료 보관함에 원본으로 남길
+// 화질(ASSET_MAX_DIM 기준)로 딱 한 번만 렌더링하고, AI 분석용 저해상도 버전(CUT_AI_IMAGE_MAX_DIM_)은
+// 그 캔버스를 다시 작게 그려서 만든다(pdf.js 페이지 렌더링을 두 번 하지 않기 위함 — 비용이 큰 건
+// page.render()이고, 캔버스를 다시 그리는 건 거의 공짜다). 반환값은 페이지별
+// { assetDataUrl(자료 보관함용 고화질), aiDataUrl(AI 분석용 저화질), width, height } 배열.
 function renderPdfToImages_(file) {
   return loadScriptOnce_(PDFJS_CDN_).then(() => {
     window.pdfjsLib.GlobalWorkerOptions.workerSrc = PDFJS_WORKER_CDN_;
@@ -7889,15 +8068,22 @@ function renderPdfToImages_(file) {
   }).then(buf => window.pdfjsLib.getDocument({ data: buf }).promise).then(pdf => {
     const pageNums = Array.from({ length: pdf.numPages }, (_, i) => i + 1);
     // 페이지를 하나씩 순서대로 렌더링한다(동시에 여러 캔버스를 그리면 메모리 부담이 커짐).
-    return pageNums.reduce((chain, pageNum) => chain.then(images => pdf.getPage(pageNum).then(page => {
+    return pageNums.reduce((chain, pageNum) => chain.then(pages => pdf.getPage(pageNum).then(page => {
       const baseViewport = page.getViewport({ scale: 1 });
       const scale = Math.min(2, ASSET_MAX_DIM / Math.max(baseViewport.width, baseViewport.height));
       const viewport = page.getViewport({ scale: Math.max(scale, 0.5) });
       const canvas = document.createElement('canvas');
       canvas.width = viewport.width; canvas.height = viewport.height;
       return page.render({ canvasContext: canvas.getContext('2d'), viewport }).promise.then(() => {
-        images.push(canvas.toDataURL('image/jpeg', ASSET_JPEG_QUALITY));
-        return images;
+        const assetDataUrl = canvas.toDataURL('image/jpeg', ASSET_JPEG_QUALITY);
+        const aiScale = Math.min(1, CUT_AI_IMAGE_MAX_DIM_ / Math.max(canvas.width, canvas.height));
+        const aiCanvas = document.createElement('canvas');
+        aiCanvas.width = Math.max(1, Math.round(canvas.width * aiScale));
+        aiCanvas.height = Math.max(1, Math.round(canvas.height * aiScale));
+        aiCanvas.getContext('2d').drawImage(canvas, 0, 0, aiCanvas.width, aiCanvas.height);
+        const aiDataUrl = aiCanvas.toDataURL('image/jpeg', CUT_AI_IMAGE_JPEG_QUALITY_);
+        pages.push({ assetDataUrl, aiDataUrl, width: canvas.width, height: canvas.height });
+        return pages;
       });
     })), Promise.resolve([]));
   });
@@ -7910,6 +8096,10 @@ function parseSpreadsheetFile_(file) {
     return window.XLSX.utils.sheet_to_json(firstSheet, { defval: '' });
   });
 }
+// 지금 실제로 분석이 진행 중인지(버튼의 disabled 속성만으로는 "왜" 비활성화됐는지 구분이 안 돼서,
+// 모달을 다시 열 때 이 값을 보고 "정말 진행 중이라 그대로 둬야 하는지" vs "예전에 끝났는데 어떤
+// 이유로든 안 풀렸으니 지금 리셋해도 되는지"를 구분한다).
+let cutAiImportRunning_ = false;
 function openCutAiImportModal_() {
   const projSel = document.getElementById('cai-project');
   const curFilter = document.getElementById('cutProjectFilter').value;
@@ -7919,11 +8109,14 @@ function openCutAiImportModal_() {
   document.getElementById('cai-target-runtime').value = '';
   cutAiProjectChanged_(); // 프로젝트가 미리 선택돼 있었으면(필터에서 넘어온 경우) 비고란으로 바로 채워준다
   document.getElementById('cai-files').value = '';
-  document.getElementById('cai-status').textContent = '';
-  // 이전에 시작한 분석이 실패/중단되는 과정에서 어떤 이유로든 버튼이 disabled 상태로 남아있을 수 있으니,
-  // 모달을 다시 열 때는 항상 눌러볼 수 있는 상태로 리셋한다(파일 유무와 무관하게 버튼 자체는 항상
-  // 활성화되어 있어야 하며, 실제 시작 가능 여부는 클릭 시 runCutAiImport_ 안에서 판단한다).
-  document.getElementById('cai-start-btn').disabled = false;
+  // 이전에 시작한 분석이 실패/중단되는 과정에서 어떤 이유로든 버튼이 disabled 상태로 계속 남아있을 수
+  // 있었는데, 그렇다고 무조건 리셋하면 "진짜 지금 분석 중"인 상태에서 모달을 다시 열었을 때 버튼이
+  // 풀려서 같은 분석을 두 번 동시에 돌리는 사고가 날 수 있다. 그래서 cutAiImportRunning_ 플래그로
+  // 실제 진행 여부를 구분해서, 진행 중이 아닐 때만 리셋한다.
+  if (!cutAiImportRunning_) {
+    document.getElementById('cai-status').textContent = '';
+    document.getElementById('cai-start-btn').disabled = false;
+  }
   updateCutAiFileListStatus_();
   const local = loadCutAiLocalSettings_();
   document.getElementById('cai-local-enabled').checked = local.enabled;
@@ -8021,6 +8214,38 @@ function callAndParseCutsWithRetry_(callFn, statusEl, label, retriesLeft) {
     }
   });
 }
+// 스토리보드 이미지/PDF 페이지 원본을 자료 보관함(assets)에도 자동으로 등록한다 — 컷리스트를
+// 만든 사람 말고 다른 사람이 나중에 와도 어떤 원본에서 이 컷들이 나왔는지 자료 보관함에서 바로
+// 찾아볼 수 있게 하기 위함. 이미 같은 이미지(imgHash 완전 일치)가 등록돼 있으면 중복 등록하지
+// 않고 기존 자료 id를 그대로 재사용한다.
+// 중요: 이름/태그/설명을 뽑으려고 AI를 한 번 더 호출하지 않는다 — 같은 이미지를 방금 컷리스트
+// 분석 AI가 이미 한 번 봤으므로, 그 결과(cutsForSummary)에서 그대로 요약을 만들어 재사용한다.
+// (Groq 무료 플랜 분당 토큰 한도를 아끼기 위한 조치 — 이 세션에서 계속 지켜온 원칙과 동일.)
+function registerStoryboardImageAsAsset_(assetDataUrl, blob, width, height, name, projectId, cutsForSummary) {
+  if (!assetDataUrl) return Promise.resolve(null);
+  const imgHash = simpleHash_(assetDataUrl);
+  const existingDup = assets.find(a => a.type === 'image' && a.imgHash === imgHash);
+  if (existingDup) return Promise.resolve(existingDup.id);
+  const id = genId_('a');
+  const cutCount = (cutsForSummary || []).length;
+  const previewLines = (cutsForSummary || []).slice(0, 5)
+    .map((c, i) => `${i + 1}. ${(c.description || c.scene || '').trim()}`).filter(l => l.length > 3).join('\n');
+  const description = `스토리보드 자동 분석으로 등록된 원본 자료입니다(이 이미지에서 컷 ${cutCount}개 추출).`;
+  assignTagCategory_('스토리보드'); // 카테고리 모르는 새 태그는 일단 "미분류"로 등록(기존 관행과 동일)
+  return uploadAssetImageToStorage_(id, assetDataUrl).then(url => {
+    const storage = resolveAssetImageStorage_(url, assetDataUrl);
+    if (!storage.ok) return null; // 업로드도 실패하고 직접 저장하기엔 너무 커도, 컷리스트 생성 자체는 막지 않는다
+    const asset = {
+      id, type: 'image', name, tags: ['스토리보드'], projects: projectId ? [projectId] : [], linkedPrompts: [],
+      width, height, sizeKB: Math.round((blob ? blob.size : assetDataUrl.length * 0.75) / 1024),
+      description, aiSummary: previewLines, imgHash, updatedAt: Date.now(),
+    };
+    asset[storage.field] = storage.value;
+    assets.push(asset);
+    renderAssets();
+    return id;
+  }).catch(() => null); // 자료 등록이 실패해도 컷리스트 생성 흐름 자체는 계속 진행한다
+}
 function runCutAiImport_() {
   const files = Array.from(document.getElementById('cai-files').files || []);
   const projectId = document.getElementById('cai-project').value;
@@ -8035,16 +8260,17 @@ function runCutAiImport_() {
     return;
   }
   startBtn.disabled = true;
+  cutAiImportRunning_ = true;
   const startedAt = new Date();
   let importedCount = 0;
-  const appendCuts = (cutList, sourceType) => {
+  const appendCuts = (cutList, sourceType, linkedAssetId) => {
     const sameGroup = cuts.filter(c => (c.projectId || '') === (projectId || ''));
     let order = sameGroup.length ? Math.max(...sameGroup.map(c => c.order || 0)) : 0;
     cutList.forEach(c => {
       order += 1;
       cuts.push(Object.assign({
         id: genId_('cut'), projectId: projectId || '', order,
-        status: CUT_STATUS_OPTIONS_[0], thumbDataUrl: '', linkedAssetIds: [], sourceType, seedancePrompt: '', updatedAt: Date.now(),
+        status: CUT_STATUS_OPTIONS_[0], thumbDataUrl: '', linkedAssetIds: linkedAssetId ? [linkedAssetId] : [], sourceType, seedancePrompt: '', updatedAt: Date.now(),
       }, c));
       importedCount++;
     });
@@ -8064,6 +8290,7 @@ function runCutAiImport_() {
       .catch(err => { statusEl.textContent += `\n⚠️ 스토리보드 기획 실패: ${err.message}`; })
       .then(() => {
         startBtn.disabled = false;
+        cutAiImportRunning_ = false;
         statusEl.textContent = `✅ 완료 (${startedAt.toLocaleTimeString('ko-KR')} 시작) — 컷 ${importedCount}개를 새로 기획했습니다. 표에서 내용을 확인·수정해주세요.` + (statusEl.textContent.indexOf('⚠️') !== -1 ? '\n' + statusEl.textContent.split('\n').filter(l => l.indexOf('⚠️') !== -1).join('\n') : '');
         if (importedCount > 0) { showToast(`컷 ${importedCount}개를 새로 기획했습니다`); renderCuts(); }
       });
@@ -8085,26 +8312,31 @@ function runCutAiImport_() {
       }).catch(err => { statusEl.textContent += `\n⚠️ "${file.name}" 표를 읽지 못했습니다: ${err.message}`; });
     }
     if (isPdf) {
-      return renderPdfToImages_(file).then(images => runSequential(images, (imgDataUrl, pageIdx) => {
-        statusEl.textContent = `시작: ${startedAt.toLocaleTimeString('ko-KR')} · "${file.name}" ${pageIdx + 1}/${images.length}페이지 분석 중…`;
-        return callAndParseCutsWithRetry_(() => callVisionAiWithFallbackChoice_(buildCutSplitPrompt_(context), imgDataUrl), statusEl, `${file.name} ${pageIdx + 1}페이지`).then(parsedCuts => {
-          appendCuts(parsedCuts, 'ai');
-          renderCuts(); doAutoSave(); // 즉시 저장 — 사유는 위 "스토리보드 기획" 분기 주석 참고
-        }).catch(err => { statusEl.textContent += `\n⚠️ "${file.name}" ${pageIdx + 1}페이지 분석 실패: ${err.message}`; });
+      return renderPdfToImages_(file).then(pages => runSequential(pages, (page, pageIdx) => {
+        statusEl.textContent = `시작: ${startedAt.toLocaleTimeString('ko-KR')} · "${file.name}" ${pageIdx + 1}/${pages.length}페이지 분석 중…`;
+        return callAndParseCutsWithRetry_(() => callVisionAiWithFallbackChoice_(buildCutSplitPrompt_(context), page.aiDataUrl), statusEl, `${file.name} ${pageIdx + 1}페이지`).then(parsedCuts =>
+          registerStoryboardImageAsAsset_(page.assetDataUrl, null, page.width, page.height, `${file.name} - ${pageIdx + 1}페이지`, projectId, parsedCuts).then(assetId => {
+            appendCuts(parsedCuts, 'ai', assetId);
+            renderCuts(); doAutoSave(); // 즉시 저장 — 사유는 위 "스토리보드 기획" 분기 주석 참고
+          })
+        ).catch(err => { statusEl.textContent += `\n⚠️ "${file.name}" ${pageIdx + 1}페이지 분석 실패: ${err.message}`; });
       })).catch(err => { statusEl.textContent += `\n⚠️ "${file.name}" PDF를 읽지 못했습니다: ${err.message}`; });
     }
     if (isImage) {
-      return resizeImageFile_(file).then(({ dataUrl }) =>
-        callAndParseCutsWithRetry_(() => callVisionAiWithFallbackChoice_(buildCutSplitPrompt_(context), dataUrl), statusEl, file.name)
-      ).then(parsedCuts => {
-        appendCuts(parsedCuts, 'ai');
-        renderCuts(); doAutoSave(); // 즉시 저장 — 사유는 위 "스토리보드 기획" 분기 주석 참고
-      }).catch(err => { statusEl.textContent += `\n⚠️ "${file.name}" 분석 실패: ${err.message}`; });
+      return Promise.all([resizeImageForAiAnalysis_(file), resizeImageFile_(file)]).then(([aiSized, assetSized]) =>
+        callAndParseCutsWithRetry_(() => callVisionAiWithFallbackChoice_(buildCutSplitPrompt_(context), aiSized.dataUrl), statusEl, file.name).then(parsedCuts =>
+          registerStoryboardImageAsAsset_(assetSized.dataUrl, assetSized.blob, assetSized.width, assetSized.height, file.name, projectId, parsedCuts).then(assetId => {
+            appendCuts(parsedCuts, 'ai', assetId);
+            renderCuts(); doAutoSave(); // 즉시 저장 — 사유는 위 "스토리보드 기획" 분기 주석 참고
+          })
+        )
+      ).catch(err => { statusEl.textContent += `\n⚠️ "${file.name}" 분석 실패: ${err.message}`; });
     }
     statusEl.textContent += `\n⚠️ "${file.name}"은(는) 지원하지 않는 형식입니다(이미지/PDF/엑셀/CSV만 가능).`;
     return Promise.resolve();
   }).then(() => {
     startBtn.disabled = false;
+    cutAiImportRunning_ = false;
     statusEl.textContent = `✅ 완료 (${startedAt.toLocaleTimeString('ko-KR')} 시작) — 컷 ${importedCount}개를 가져왔습니다. 표에서 내용을 확인·수정해주세요.` + (statusEl.textContent.indexOf('⚠️') !== -1 ? '\n' + statusEl.textContent.split('\n').filter(l => l.indexOf('⚠️') !== -1).join('\n') : '');
     if (importedCount > 0) { showToast(`컷 ${importedCount}개를 가져왔습니다`); renderCuts(); }
   });
