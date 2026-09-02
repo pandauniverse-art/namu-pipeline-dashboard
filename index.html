@@ -6446,12 +6446,17 @@ function renderStyleTagLibrary_() {
     items = items.slice().sort((a, b) => (a.order || 0) - (b.order || 0));
     return `<div style="margin-bottom:16px;">
       <div style="font-size:12px; font-weight:600; color:var(--text-secondary); margin-bottom:6px;">${escapeHtml_(cat)}</div>
-      <div style="display:flex; flex-wrap:wrap; gap:6px;">
+      <div style="display:flex; flex-wrap:wrap; gap:8px;">
         ${items.length ? items.map(t => {
           const active = styleTagSelected_.includes(t.id);
-          return `<span class="pill" onclick="toggleStyleTagSelect_('${t.id}')" title="${escapeHtml_(t.desc || '')}" style="cursor:pointer; display:inline-flex; align-items:center; gap:6px; ${active ? 'background:var(--accent); color:#fff; border-color:var(--accent);' : ''}">
-            ${escapeHtml_(t.tag)}${canDelete ? `<span onclick="event.stopPropagation(); deleteStyleTag_('${t.id}')" style="opacity:.7;">×</span>` : ''}
-          </span>`;
+          // 설명을 마우스오버 툴팁(title)에만 숨겨두면 놓치기 쉬워서, 태그 아래에 항상 보이는 작은 글씨로 같이 표시한다.
+          return `<div onclick="toggleStyleTagSelect_('${t.id}')" style="cursor:pointer; display:flex; flex-direction:column; gap:2px; min-width:110px; max-width:220px; padding:6px 10px; border-radius:8px; border:1px solid var(--border); ${active ? 'background:var(--accent); color:#fff; border-color:var(--accent);' : ''}">
+            <div style="display:flex; align-items:center; justify-content:space-between; gap:8px;">
+              <span style="font-size:12px; font-weight:600;">${escapeHtml_(t.tag)}</span>
+              ${canDelete ? `<span onclick="event.stopPropagation(); deleteStyleTag_('${t.id}')" style="opacity:.7; font-size:12px;">×</span>` : ''}
+            </div>
+            ${t.desc ? `<span style="font-size:11px; ${active ? 'color:rgba(255,255,255,.85);' : 'color:var(--text-muted);'}">${escapeHtml_(t.desc)}</span>` : ''}
+          </div>`;
         }).join('') : '<span style="font-size:11px; color:var(--text-muted);">등록된 태그 없음</span>'}
       </div>
     </div>`;
