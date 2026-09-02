@@ -861,7 +861,9 @@
       <button type="button" class="asset-subtab-btn" data-asset-subtab="image" onclick="activateAssetSubTab('image')">🖼 이미지 라이브러리 <span id="assetSubtabCount-image"></span></button>
       <button type="button" class="asset-subtab-btn" data-asset-subtab="video" onclick="activateAssetSubTab('video')">🎬 영상 라이브러리 <span id="assetSubtabCount-video"></span></button>
       <button type="button" class="asset-subtab-btn" data-asset-subtab="prompt" onclick="activateAssetSubTab('prompt')">💬 프롬프트 <span id="assetSubtabCount-prompt"></span></button>
+      <button type="button" class="asset-subtab-btn" data-asset-subtab="styletag" onclick="activateAssetSubTab('styletag')">🏷 스타일 태그 <span id="assetSubtabCount-styletag"></span></button>
     </div>
+    <div id="assetNormalPanel">
     <div class="filter-row">
       <button class="primary" onclick="openAssetModal()">+ 자료 추가</button>
       <select id="assetProjectFilter" onchange="renderAssets()"><option value="">전체 프로젝트</option></select>
@@ -877,6 +879,35 @@
     <div class="asset-tag-filter asset-tag-subfilter" id="assetTagSubFilter"></div>
     <div class="grid" id="assetGrid" style="grid-template-columns: repeat(auto-fill, minmax(220px,1fr));"></div>
     <div class="empty-state" id="assetEmpty" style="display:none">등록된 자료가 없습니다. '+ 자료 추가'로 시작하세요.</div>
+    </div>
+    <!-- 스타일 태그 레퍼런스 라이브러리 — 완성된 프롬프트(위 "프롬프트" 탭)와 달리, 카테고리별 짧은 태그+한줄설명을
+         모아두고 2~3개씩 골라 조합해서 프롬프트의 재료로 쓰는 참고 화면. renderStyleTagLibrary_()가 내용을 채운다. -->
+    <div id="styleTagLibraryPanel" style="display:none;">
+      <div class="note-box" style="margin-top:0; margin-bottom:14px;">
+        인물·카메라/렌즈·구도·장소·분위기 등 카테고리별로 짧은 스타일 태그를 모아두고, 태그를 2~3개 골라 조합해서 프롬프트의 재료로 쓰는 참고 라이브러리입니다. 완성된 프롬프트 자체는 "프롬프트" 탭에 저장하세요. 카테고리·태그는 누구나 추가할 수 있고, 삭제는 관리자만 가능합니다.
+      </div>
+      <div class="card" style="margin-bottom:14px;">
+        <h2 class="section-title" style="margin-top:0; font-size:14px;">+ 새 스타일 태그 추가</h2>
+        <div class="filter-row">
+          <input type="text" id="newStyleTagCategory" list="styleTagCategoryDatalist" placeholder="카테고리 (예: 조명)" style="max-width:160px;">
+          <datalist id="styleTagCategoryDatalist"></datalist>
+          <input type="text" id="newStyleTagText" placeholder="태그 (예: 역광 실루엣)" style="max-width:220px;" onkeydown="if(event.key==='Enter'){event.preventDefault();addStyleTag_();}">
+          <input type="text" id="newStyleTagDesc" placeholder="한줄 설명 (선택)" style="flex:1; min-width:160px;">
+          <button class="primary" onclick="addStyleTag_()">+ 추가</button>
+        </div>
+      </div>
+      <input type="text" id="styleTagKeyword" placeholder="태그/설명 검색" oninput="renderStyleTagLibraryDebounced_()" style="margin-bottom:12px; width:100%;">
+      <div id="styleTagGroups"></div>
+      <div class="card" style="margin-top:16px;">
+        <h2 class="section-title" style="margin-top:0; font-size:14px;">선택한 태그 조합 <span id="styleTagSelectedCount" style="font-weight:400; color:var(--text-muted); font-size:12px;"></span></h2>
+        <textarea id="styleTagComposed" rows="2" readonly style="width:100%; font-family:monospace;"></textarea>
+        <div class="filter-row" style="margin-top:8px;">
+          <button type="button" onclick="clearStyleTagSelection_()">선택 초기화</button>
+          <button type="button" onclick="copyStyleTagComposed_()">📋 복사</button>
+          <button class="primary" onclick="saveStyleTagComposedAsPrompt_()">💾 새 프롬프트로 저장</button>
+        </div>
+      </div>
+    </div>
   </div>
     <div class="group-subtabpanel" id="subtab-cutlist">
     <div class="note-box" style="margin-top:0; margin-bottom:16px;">
@@ -1311,8 +1342,8 @@
         <input id="as-videofile" type="file" accept="video/*" onchange="handleVideoFileSelected_()">
         <div id="as-video-upload-progress" style="display:none; margin-top:6px; font-size:11px; color:var(--text-muted);"></div>
         <label style="margin-top:10px;">또는 영상 링크 직접 입력 (URL)</label>
-        <input id="as-videourl" placeholder="예: https://drive.google.com/... 또는 유튜브 링크">
-        <div style="font-size:11px; color:var(--text-muted); margin-top:4px;">파일을 올리면 회사 구글 드라이브에 저장되고 링크가 자동으로 채워집니다. 이미 다른 곳에 올려둔 영상이 있다면 위 파일 선택 대신 링크만 붙여넣어도 됩니다. 유튜브 링크(youtube.com, youtu.be)는 카드에서 바로 재생할 수 있어요.</div>
+        <input id="as-videourl" placeholder="예: https://drive.google.com/... 또는 유튜브·인스타그램 릴스 링크" oninput="handleVideoUrlInputDebounced_()">
+        <div style="font-size:11px; color:var(--text-muted); margin-top:4px;">파일을 올리면 회사 구글 드라이브에 저장되고 링크가 자동으로 채워집니다. 이미 다른 곳에 올려둔 영상이 있다면 위 파일 선택 대신 링크만 붙여넣어도 됩니다. 유튜브 링크(youtube.com, youtu.be)는 카드에서 바로 재생할 수 있어요. 인스타그램 릴스 등 그 외 링크는 붙여넣으면 미리보기 이미지를 자동으로 가져와 대표 프레임으로 등록합니다(항상 성공하지는 않으며, 실패하면 저장 후 "썸네일 변경"으로 직접 등록할 수 있어요).</div>
       </div>
       <div style="grid-column:1/-1; display:none" id="as-prompt-field">
         <label>프롬프트 내용</label>
@@ -1396,6 +1427,21 @@
   </div>
 </div>
 <!-- 자료(이미지/영상/프롬프트) ↔ 프로젝트 연결 피커: 카드에서 "관리"를 누르면 체크박스로 명확하게 연결/해제 (실수로 클릭해서 바뀌는 일이 없도록) -->
+<div class="modal-backdrop" id="promptLargeViewBackdrop">
+  <div class="modal" style="max-width:720px;">
+    <h2 id="plv-title">프롬프트</h2>
+    <div style="font-size:12px; color:var(--text-muted); margin-bottom:10px;" id="plv-meta"></div>
+    <textarea id="plv-text" rows="14" style="width:100%; font-family:monospace; font-size:13px;" onchange="onPromptLargeViewTextChanged_()"></textarea>
+    <div id="plv-linked-images" style="display:flex; gap:6px; overflow-x:auto; margin-top:10px;"></div>
+    <div class="modal-footer" style="justify-content:space-between;">
+      <span style="font-size:11px; color:var(--text-muted);">💡 이 카드를 드래그하면 다른 칸이나 다른 탭/프로그램에 그대로 끌어놓을 수 있습니다. 내용을 고치면 자동 저장됩니다.</span>
+      <span style="display:flex; gap:8px;">
+        <button type="button" onclick="copyPromptLargeViewText_()">📋 복사</button>
+        <button onclick="closePromptLargeView_()">닫기</button>
+      </span>
+    </div>
+  </div>
+</div>
 <div class="modal-backdrop" id="assetProjectPickerBackdrop">
   <div class="modal" style="max-width:420px;">
     <h2>연결 프로젝트 — <span id="appAssetName"></span></h2>
@@ -1581,6 +1627,7 @@ let tagAssignments = [];
 // 연결된(고정된 키를 가진) 항목이라 자유롭게 새로 추가하지는 않고, 각 항목의 스타일 지시문만 수정한다.
 // {id(=key, 코드와 매칭되는 고정 식별자), name, triggerDescription, editableIntro, defaultIntro, usedBy, locked, order, updatedAt}
 let skills = [];
+let styleTags = []; // 스타일 태그 레퍼런스 라이브러리 (인스타그램식 짧은 태그+설명 카드, 자료 보관함 "스타일 태그" 서브탭)
 let idCounter = 1; // 더 이상 ID 생성에 쓰이지 않음(레거시 백업 파일 호환용으로만 유지) — 실제 ID는 genId_()로 생성
 // 새로고침 시 카운터가 1부터 다시 시작되면서 기존 자료와 같은 ID가 생겨 덮어써지는 문제가 있었음.
 // 그래서 ID는 시간값+임의값 조합으로 생성해 충돌 가능성을 사실상 없앤다.
@@ -1685,11 +1732,12 @@ const db = firebase.firestore();
 // 대신 이 방식을 쓴다 — Vercel 프록시가 서버 쪽에서만 GitHub API를 호출하므로 토큰이 브라우저에 노출되지 않는다.
 // 이미지가 수백~수천 장으로 늘어나도 로그인할 때 Firestore에서 받아오는 데이터양은 가벼운 텍스트 수준으로
 // 유지되고, 실제 이미지 픽셀 데이터는 화면에 보일 때만 그 CDN 주소로 브라우저가 지연 로딩한다.)
-const COLLECTIONS = ['projects', 'aiTasks', 'scheduleTasks', 'assets', 'cuts', 'activityLog', 'trash', 'calendarNotes', 'users', 'tagCategories', 'tagAssignments', 'reports', 'skills'];
-const COLLECTION_LABEL_ = { projects: '프로젝트', aiTasks: '작업', scheduleTasks: '일정 계산기 작업', assets: '자료', cuts: '컷리스트', activityLog: '활동 로그', trash: '휴지통', calendarNotes: '달력 일정', users: '팀원', tagCategories: '태그 카테고리', tagAssignments: '태그 분류', reports: '리포트 이력', skills: 'AI 스킬' };
+const COLLECTIONS = ['projects', 'aiTasks', 'scheduleTasks', 'assets', 'cuts', 'activityLog', 'trash', 'calendarNotes', 'users', 'tagCategories', 'tagAssignments', 'reports', 'skills', 'styleTags'];
+const COLLECTION_LABEL_ = { projects: '프로젝트', aiTasks: '작업', scheduleTasks: '일정 계산기 작업', assets: '자료', cuts: '컷리스트', activityLog: '활동 로그', trash: '휴지통', calendarNotes: '달력 일정', users: '팀원', tagCategories: '태그 카테고리', tagAssignments: '태그 분류', reports: '리포트 이력', skills: 'AI 스킬', styleTags: '스타일 태그' };
 const CLOUD_FUNCTIONS_READY = false; // 자동 이메일점검 등 일부 기능은 Blaze(카드 등록) 전환 후 활성화됩니다
 const AI_PROXY_URL = 'https://namu-ai-proxy.vercel.app/api/ai-input'; // AI 입력 기능은 Vercel 서버리스 함수를 통해 Groq API와 연결됩니다
 const IMAGE_UPLOAD_PROXY_URL = 'https://namu-ai-proxy.vercel.app/api/upload-image'; // 이미지 자료는 이 Vercel 서버리스 함수를 통해 GitHub 저장소에 커밋된다
+const LINK_PREVIEW_PROXY_URL = 'https://namu-ai-proxy.vercel.app/api/fetch-link-preview'; // 영상 링크(인스타그램 릴스 등)의 미리보기 이미지(og:image)를 이 Vercel 서버리스 함수를 통해 가져온다
 // 이 저장소가 public이라 위 프록시 URL도 누구나 볼 수 있다. 프록시가 요청을 진짜 우리 회사 로그인 사용자가
 // 보낸 것인지 서버에서 검증할 수 있도록, 매 호출마다 지금 로그인한 사람의 Firebase ID 토큰을
 // Authorization: Bearer 헤더로 같이 실어 보낸다(프록시 쪽 verifyCompanyUser와 짝을 이룸).
@@ -1831,9 +1879,9 @@ const AUTO_SAVE_RETRY_MAX_MS_ = 60000;
 let autoSaveSuppressed = true; // 초기 로딩 중에는 자동저장을 잠깐 막아서 방금 불러온 데이터를 그대로 되쏘는 것을 방지
 let hasUnsavedChanges_ = false; // 900ms 자동저장 대기/진행 중인 변경사항이 있는지 — 이 사이에 탭을 닫으면 사라질 수 있어 경고에 사용
 let unsavedGeneration_ = 0; // queueAutoSave가 호출될 때마다 증가 — 저장이 진행되는 도중에 새 변경이 또 들어온 경우를 구분하기 위함
-let deletedIds = {projects: [], aiTasks: [], scheduleTasks: [], assets: [], cuts: [], activityLog: [], trash: [], calendarNotes: [], users: [], tagCategories: [], tagAssignments: [], reports: []}; // 아직 서버에 삭제 반영 안 된 id들
-let lastFlushedAt = {projects: 0, aiTasks: 0, scheduleTasks: 0, assets: 0, cuts: 0, activityLog: 0, trash: 0, calendarNotes: 0, users: 0, tagCategories: 0, tagAssignments: 0, reports: 0, skills: 0}; // 컬렉션별로 마지막에 서버에 반영한 시점 (이 이후 updatedAt인 항목만 다시 씀)
-let snapshotsReady = {projects: false, aiTasks: false, scheduleTasks: false, assets: false, cuts: false, activityLog: false, trash: false, calendarNotes: false, users: false, tagCategories: false, tagAssignments: false, reports: false, skills: false};
+let deletedIds = {projects: [], aiTasks: [], scheduleTasks: [], assets: [], cuts: [], activityLog: [], trash: [], calendarNotes: [], users: [], tagCategories: [], tagAssignments: [], reports: [], styleTags: []}; // 아직 서버에 삭제 반영 안 된 id들
+let lastFlushedAt = {projects: 0, aiTasks: 0, scheduleTasks: 0, assets: 0, cuts: 0, activityLog: 0, trash: 0, calendarNotes: 0, users: 0, tagCategories: 0, tagAssignments: 0, reports: 0, skills: 0, styleTags: 0}; // 컬렉션별로 마지막에 서버에 반영한 시점 (이 이후 updatedAt인 항목만 다시 씀)
+let snapshotsReady = {projects: false, aiTasks: false, scheduleTasks: false, assets: false, cuts: false, activityLog: false, trash: false, calendarNotes: false, users: false, tagCategories: false, tagAssignments: false, reports: false, skills: false, styleTags: false};
 let currentUser = null;
 function isAutoSaveConfigured() {
   return !!currentUser;
@@ -2067,6 +2115,7 @@ const COLLECTION_VAR = {
   projects: () => projects, aiTasks: () => aiTasks, scheduleTasks: () => scheduleTasks, assets: () => assets, cuts: () => cuts,
   activityLog: () => activityLog, trash: () => trash, calendarNotes: () => calendarNotes, users: () => users,
   tagCategories: () => tagCategories, tagAssignments: () => tagAssignments, reports: () => reports, skills: () => skills,
+  styleTags: () => styleTags,
 };
 const COLLECTION_SETTER = {
   projects: (v) => { projects = v; }, aiTasks: (v) => { aiTasks = v; },
@@ -2075,6 +2124,7 @@ const COLLECTION_SETTER = {
   users: (v) => { users = v; },
   tagCategories: (v) => { tagCategories = v; }, tagAssignments: (v) => { tagAssignments = v; },
   reports: (v) => { reports = v; }, skills: (v) => { skills = v; },
+  styleTags: (v) => { styleTags = v; },
 };
 // 각 컬렉션에 실시간 리스너를 붙인다 - 누군가 문서를 추가/수정/삭제하면 즉시(폴링 없이) 반영됨.
 // 모달/사이드패널이 열려있는 동안에는 화면을 다시 그리지 않고 큐에만 쌓아둔다(입력 중 화면이 바뀌는 것 방지).
@@ -2168,7 +2218,7 @@ function doAutoSave() {
   }
   Promise.all(batches.map(b => b.commit())).then(() => {
     COLLECTIONS.forEach(coll => { lastFlushedAt[coll] = flushedAt; });
-    deletedIds = {projects: [], aiTasks: [], scheduleTasks: [], assets: [], cuts: [], activityLog: [], trash: [], calendarNotes: [], users: [], tagCategories: [], tagAssignments: [], reports: []};
+    deletedIds = {projects: [], aiTasks: [], scheduleTasks: [], assets: [], cuts: [], activityLog: [], trash: [], calendarNotes: [], users: [], tagCategories: [], tagAssignments: [], reports: [], styleTags: []};
     // 저장이 진행되는 동안 새 변경이 또 들어왔다면(unsavedGeneration_이 더 증가했다면) 아직 저장 안 된 게
     // 남아있는 것이므로 플래그를 내리지 않는다 — 곧 다시 예약된 doAutoSave가 그 변경까지 마저 저장한다.
     if (unsavedGeneration_ === startGen) hasUnsavedChanges_ = false;
@@ -5656,6 +5706,7 @@ function openAssetModal() {
   document.getElementById('as-video-upload-progress').style.display = 'none';
   videoUploadInProgress_ = false;
   pendingVideoThumbDataUrl_ = '';
+  videoUrlPreviewToken_++; // 이전에 열었을 때 링크 미리보기 요청이 아직 응답 중이었다면 그 결과는 이제 무시한다
   document.getElementById('as-prompttext').value = '';
   document.getElementById('as-description').value = '';
   document.getElementById('as-ai-summarize').checked = true;
@@ -5715,6 +5766,43 @@ function handleVideoFileSelected_() {
         .then(() => { progressEl.textContent = `✅ "${file.name}" 업로드 완료 (아래 저장 버튼을 눌러 자료로 등록하세요)`; });
     });
 }
+// 영상 링크 입력칸에 유튜브가 아닌 일반 링크(인스타그램 릴스 등)를 붙여넣으면, 그 페이지의 og:image(링크
+// 미리보기 이미지)를 서버(LINK_PREVIEW_PROXY_URL)를 통해 가져와서, 파일 업로드 때와 완전히 똑같이
+// pendingVideoThumbDataUrl_에 담아둔다 — 저장 시 asset.thumbDataUrl로 들어가고, 이미 있는
+// applyAiVideoFrameAnalysis_()가 썸네일 유무만 보고 그대로 AI 분석까지 이어서 해준다(별도 분기 필요 없음).
+// 유튜브는 img.youtube.com에서 무료로 바로 썸네일을 그릴 수 있어(assetThumbHTML_) 이 호출 자체를 건너뛴다.
+// 인스타그램은 로그인/봇 차단 때문에 항상 성공하지는 않는 "되면 좋고 안 되면 수동으로" 보조 기능이다.
+let videoUrlPreviewToken_ = 0; // 입력 도중 여러 번 호출돼도 가장 마지막 요청의 응답만 반영하기 위한 토큰
+function handleVideoUrlInput_() {
+  if (videoUploadInProgress_) return; // 파일 업로드 흐름이 이미 이 입력칸/진행 표시를 쓰고 있으면 건드리지 않음
+  const urlInput = document.getElementById('as-videourl');
+  const url = urlInput.value.trim();
+  const progressEl = document.getElementById('as-video-upload-progress');
+  pendingVideoThumbDataUrl_ = '';
+  videoUrlPreviewToken_++;
+  if (!url) { progressEl.style.display = 'none'; return; }
+  if (youtubeVideoId_(url)) { progressEl.style.display = 'none'; return; } // 유튜브는 카드에서 바로 무료 썸네일을 그리므로 불필요
+  const myToken = videoUrlPreviewToken_;
+  progressEl.style.display = 'block';
+  progressEl.textContent = '링크 미리보기(썸네일) 가져오는 중…';
+  callAiProxy_(LINK_PREVIEW_PROXY_URL, { url })
+    .then(r => r.json())
+    .then(data => {
+      if (myToken !== videoUrlPreviewToken_) return; // 그 사이 입력이 또 바뀌었으면 낡은 응답이므로 무시
+      if (data.ok && data.imageDataUrl) {
+        pendingVideoThumbDataUrl_ = data.imageDataUrl;
+        progressEl.textContent = '✅ 링크 미리보기를 가져왔습니다 (저장 시 대표 프레임으로 등록됩니다)';
+        if (data.title && !document.getElementById('as-name').value.trim()) document.getElementById('as-name').value = data.title;
+      } else {
+        progressEl.textContent = `⚠️ 미리보기를 가져오지 못했습니다${data.error ? ' (' + data.error + ')' : ''} — 저장한 뒤 "썸네일 변경"으로 직접 등록해주세요.`;
+      }
+    })
+    .catch(() => {
+      if (myToken !== videoUrlPreviewToken_) return;
+      progressEl.textContent = '⚠️ 미리보기를 가져오지 못했습니다 — 저장한 뒤 "썸네일 변경"으로 직접 등록해주세요.';
+    });
+}
+const handleVideoUrlInputDebounced_ = debounce_(handleVideoUrlInput_, 700);
 function saveAssetFromModal() {
   const type = document.getElementById('as-type').value;
   const name = document.getElementById('as-name').value.trim();
@@ -6038,12 +6126,10 @@ function performAssetDeletion_(id) {
   renderTrash();
   queueAutoSave();
 }
-// 프롬프트 자료의 텍스트 전체를 클립보드로 복사한다. (모던 브라우저는 clipboard API, 안 되면 임시 textarea로 fallback)
-function copyAssetPromptText_(id) {
-  const a = assets.find(x => x.id === id);
-  if (!a || !a.text) return;
-  const text = a.text;
-  const done = () => showToast('프롬프트가 복사되었습니다');
+// 텍스트를 클립보드로 복사하는 공용 헬퍼. (모던 브라우저는 clipboard API, 안 되면 임시 textarea로 fallback)
+function copyPlainText_(text, opts) {
+  opts = opts || {};
+  const done = () => showToast(opts.doneMessage || '복사되었습니다');
   const fail = () => showToast('복사에 실패했습니다. 직접 선택해서 복사해주세요');
   if (navigator.clipboard && navigator.clipboard.writeText) {
     navigator.clipboard.writeText(text).then(done).catch(fail);
@@ -6060,6 +6146,12 @@ function copyAssetPromptText_(id) {
       done();
     } catch (e) { fail(); }
   }
+}
+// 프롬프트 자료의 텍스트 전체를 클립보드로 복사한다.
+function copyAssetPromptText_(id) {
+  const a = assets.find(x => x.id === id);
+  if (!a || !a.text) return;
+  copyPlainText_(a.text, { doneMessage: '프롬프트가 복사되었습니다' });
 }
 // 자료 카드의 "AI 요약 생성" 버튼 문구를 자료 종류/상태에 맞게 골라준다. 영상인데 대표 프레임(썸네일)이
 // 있으면 이미지와 동일하게 실제 장면을 보고 분석하므로 이미지와 같은 문구를 쓰고, 썸네일이 없는 링크
@@ -6148,7 +6240,9 @@ function assetThumbHTML_(a) {
     }
     return `<div class="asset-thumb" style="display:flex; align-items:center; justify-content:center; font-size:28px; cursor:pointer;" onclick="openVideoLightbox_('${a.id}')">🎬</div>`;
   }
-  return `<div class="asset-thumb" style="display:flex; align-items:flex-start; padding:10px; font-size:11px; white-space:pre-wrap; overflow:hidden; color:var(--text-secondary); font-family:monospace;">${escapeHtml_((a.text||'').slice(0,160))}</div>`;
+  // 프롬프트 카드: 클릭하면 크게보기 모달이 열리고, 드래그하면 텍스트가 그대로 딸려나가서(text/plain)
+  // 이 사이트 안의 다른 입력칸(AI 채팅 입력창 등)이나 다른 브라우저 탭/프로그램의 입력칸에 바로 끌어놓을 수 있다.
+  return `<div class="asset-thumb" draggable="true" ondragstart="handlePromptCardDragStart_(event,'${a.id}')" onclick="openPromptLargeView_('${a.id}')" title="클릭: 크게 보기 · 드래그: 다른 곳에 끌어놓기" style="display:flex; align-items:flex-start; padding:10px; font-size:11px; white-space:pre-wrap; overflow:hidden; color:var(--text-secondary); font-family:monospace; cursor:grab; position:relative;">${escapeHtml_((a.text||'').slice(0,160))}<span style="position:absolute; right:6px; bottom:4px; font-size:12px; opacity:.55;">⤢</span></div>`;
 }
 // 프롬프트 카드 안에 그 프롬프트와 연결된(linkedPrompts에 이 프롬프트 id가 들어있는) 이미지들을 작은 썸네일 줄로 보여준다.
 function renderLinkedImagesStrip_(promptId) {
@@ -6283,7 +6377,7 @@ const ASSET_SUBTAB_STORAGE_KEY = 'namu_pipeline_asset_subtab_v1';
 let assetSubTab = 'image';
 try {
   const savedSubTab = localStorage.getItem(ASSET_SUBTAB_STORAGE_KEY);
-  if (savedSubTab === 'image' || savedSubTab === 'video' || savedSubTab === 'prompt') assetSubTab = savedSubTab;
+  if (savedSubTab === 'image' || savedSubTab === 'video' || savedSubTab === 'prompt' || savedSubTab === 'styletag') assetSubTab = savedSubTab;
 } catch (e) {}
 function activateAssetSubTab(type) {
   assetSubTab = type;
@@ -6291,6 +6385,129 @@ function activateAssetSubTab(type) {
   assetTagCategoryFilter = '';
   try { localStorage.setItem(ASSET_SUBTAB_STORAGE_KEY, type); } catch (e) {}
   renderAssets();
+}
+// ---------- 프롬프트 카드: 드래그로 꺼내기 / 크게 보기 ----------
+// 프롬프트 카드 미리보기(assetThumbHTML_)를 드래그하면 텍스트를 text/plain으로 실어서, 이 사이트 안의
+// 다른 입력칸(AI 채팅 입력창 등)이나 다른 브라우저 탭·프로그램의 입력칸에 그대로 끌어놓을 수 있게 한다.
+// 별도의 drop 처리 코드가 필요 없다 — <input>/<textarea>는 브라우저가 기본으로 텍스트 드롭을 받아준다.
+function handlePromptCardDragStart_(event, id) {
+  const a = assets.find(x => x.id === id);
+  if (!a || !a.text) return;
+  event.dataTransfer.setData('text/plain', a.text);
+  event.dataTransfer.effectAllowed = 'copy';
+}
+let promptLargeViewId_ = null;
+function openPromptLargeView_(id) {
+  const a = assets.find(x => x.id === id);
+  if (!a) return;
+  promptLargeViewId_ = id;
+  document.getElementById('plv-title').textContent = a.name || '(이름 없음)';
+  const metaParts = [];
+  if ((a.tags || []).length) metaParts.push('태그: ' + a.tags.join(', '));
+  if (a.aiSummary) metaParts.push('요약: ' + a.aiSummary);
+  document.getElementById('plv-meta').textContent = metaParts.join(' · ');
+  document.getElementById('plv-text').value = a.text || '';
+  const linked = assets.filter(x => x.type === 'image' && (x.linkedPrompts || []).includes(id));
+  document.getElementById('plv-linked-images').innerHTML = linked.map(img => {
+    const src = img.url || img.dataUrl || '';
+    return `<img src="${escapeHtml_(src)}" loading="lazy" title="${escapeHtml_(img.name)}" style="width:64px; height:64px; object-fit:cover; border-radius:4px; flex-shrink:0; cursor:pointer;" onclick="openImageLightbox_('${jsStrAttr_(src)}', '${jsStrAttr_(img.name)}')">`;
+  }).join('');
+  document.getElementById('promptLargeViewBackdrop').classList.add('active');
+}
+function closePromptLargeView_() {
+  document.getElementById('promptLargeViewBackdrop').classList.remove('active');
+  promptLargeViewId_ = null;
+  applyPendingRemoteIfAny();
+}
+function onPromptLargeViewTextChanged_() {
+  if (!promptLargeViewId_) return;
+  updateAssetField(promptLargeViewId_, 'text', document.getElementById('plv-text').value);
+}
+function copyPromptLargeViewText_() {
+  if (promptLargeViewId_) copyAssetPromptText_(promptLargeViewId_);
+}
+// ---------- 스타일 태그 레퍼런스 라이브러리 ----------
+// 완성된 프롬프트(자료 보관함의 "프롬프트" 자료)와는 다른 성격의 데이터 — 인스타그램 등에서 참고한
+// 카테고리별 짧은 태그+한줄설명을 모아두고, 2~3개씩 골라 조합해서 새 프롬프트의 재료로 쓰는 참고 화면.
+const STYLE_TAG_CATEGORIES_ = ['인물(포트레이트)', '카메라·렌즈', '구도', '장소', '분위기·공간', '움직임·에너지', '조명', '비주얼 트릭', '재질'];
+let styleTagSelected_ = []; // 지금 조합 중인 태그 id 목록 (새로고침하면 초기화되는 화면 상태일 뿐, 서버에 저장 안 함)
+function renderStyleTagLibraryDebounced_() { renderStyleTagLibrary_(); }
+function renderStyleTagLibrary_() {
+  const groupsEl = document.getElementById('styleTagGroups');
+  if (!groupsEl) return;
+  const keyword = (document.getElementById('styleTagKeyword').value || '').toLowerCase();
+  const cats = STYLE_TAG_CATEGORIES_.slice();
+  styleTags.forEach(t => { if (t.category && !cats.includes(t.category)) cats.push(t.category); });
+  const canDelete = canManageSkills_();
+  groupsEl.innerHTML = cats.map(cat => {
+    let items = styleTags.filter(t => t.category === cat);
+    if (keyword) items = items.filter(t => ((t.tag || '') + (t.desc || '')).toLowerCase().indexOf(keyword) !== -1);
+    if (!items.length && keyword) return ''; // 검색어가 있을 땐 결과 없는 카테고리는 아예 접어서 숨김
+    items = items.slice().sort((a, b) => (a.order || 0) - (b.order || 0));
+    return `<div style="margin-bottom:16px;">
+      <div style="font-size:12px; font-weight:600; color:var(--text-secondary); margin-bottom:6px;">${escapeHtml_(cat)}</div>
+      <div style="display:flex; flex-wrap:wrap; gap:6px;">
+        ${items.length ? items.map(t => {
+          const active = styleTagSelected_.includes(t.id);
+          return `<span class="pill" onclick="toggleStyleTagSelect_('${t.id}')" title="${escapeHtml_(t.desc || '')}" style="cursor:pointer; display:inline-flex; align-items:center; gap:6px; ${active ? 'background:var(--accent); color:#fff; border-color:var(--accent);' : ''}">
+            ${escapeHtml_(t.tag)}${canDelete ? `<span onclick="event.stopPropagation(); deleteStyleTag_('${t.id}')" style="opacity:.7;">×</span>` : ''}
+          </span>`;
+        }).join('') : '<span style="font-size:11px; color:var(--text-muted);">등록된 태그 없음</span>'}
+      </div>
+    </div>`;
+  }).join('');
+  const datalistEl = document.getElementById('styleTagCategoryDatalist');
+  if (datalistEl) datalistEl.innerHTML = cats.map(c => `<option value="${escapeHtml_(c)}">`).join('');
+  renderStyleTagComposer_();
+}
+function toggleStyleTagSelect_(id) {
+  const i = styleTagSelected_.indexOf(id);
+  if (i === -1) styleTagSelected_.push(id); else styleTagSelected_.splice(i, 1);
+  renderStyleTagLibrary_();
+}
+function renderStyleTagComposer_() {
+  const composedEl = document.getElementById('styleTagComposed');
+  if (!composedEl) return;
+  composedEl.value = styleTagSelected_.map(id => (styleTags.find(t => t.id === id) || {}).tag).filter(Boolean).join(', ');
+  const countEl = document.getElementById('styleTagSelectedCount');
+  if (countEl) countEl.textContent = styleTagSelected_.length ? `(${styleTagSelected_.length}개 선택)` : '';
+}
+function clearStyleTagSelection_() { styleTagSelected_ = []; renderStyleTagLibrary_(); }
+function copyStyleTagComposed_() {
+  const text = document.getElementById('styleTagComposed').value;
+  if (!text) { showToast('선택된 태그가 없습니다'); return; }
+  copyPlainText_(text);
+}
+function saveStyleTagComposedAsPrompt_() {
+  const text = document.getElementById('styleTagComposed').value.trim();
+  if (!text) { showToast('선택된 태그가 없습니다'); return; }
+  openAssetModal();
+  document.getElementById('as-type').value = 'prompt';
+  toggleAssetTypeFields();
+  document.getElementById('as-prompttext').value = text;
+}
+function addStyleTag_() {
+  const category = document.getElementById('newStyleTagCategory').value.trim() || '기타';
+  const tag = document.getElementById('newStyleTagText').value.trim();
+  const desc = document.getElementById('newStyleTagDesc').value.trim();
+  if (!tag) { showToast('태그를 입력하세요'); return; }
+  styleTags.push({ id: genId_('st'), category, tag, desc, order: styleTags.length, updatedAt: Date.now() });
+  document.getElementById('newStyleTagText').value = '';
+  document.getElementById('newStyleTagDesc').value = '';
+  renderStyleTagLibrary_();
+  queueAutoSave();
+}
+function deleteStyleTag_(id) {
+  if (!canManageSkills_()) { showToast('관리자만 삭제할 수 있습니다'); return; }
+  const idx = styleTags.findIndex(t => t.id === id);
+  if (idx === -1) return;
+  if (!confirm('이 스타일 태그를 삭제할까요?')) return;
+  deletedIds.styleTags.push(styleTags[idx].id);
+  styleTags.splice(idx, 1);
+  const si = styleTagSelected_.indexOf(id);
+  if (si !== -1) styleTagSelected_.splice(si, 1);
+  renderStyleTagLibrary_();
+  queueAutoSave();
 }
 // 대표 키워드(카테고리) 칩을 먼저 보여주고, 하나를 고르면 그 밑에 하위 키워드 칩이 펼쳐지는 2단 필터.
 // 예전에는 태그 43개가 한 줄에 전부 나열돼서 찾기 어려웠는데, 카테고리로 한 번 걸러서 보게 한다.
@@ -6423,6 +6640,16 @@ function renderAssets() {
     const el = document.getElementById('assetSubtabCount-' + t);
     if (el) el.textContent = '(' + assets.filter(a => a.type === t).length + ')';
   });
+  const styleTagCountEl = document.getElementById('assetSubtabCount-styletag');
+  if (styleTagCountEl) styleTagCountEl.textContent = '(' + styleTags.length + ')';
+  // "스타일 태그" 서브탭은 자료(assets) 자체가 아니라 완전히 다른 데이터(styleTags)를 다루므로,
+  // 자료 그리드/필터 UI는 통째로 숨기고 renderStyleTagLibrary_()가 그리는 전용 화면만 보여준다.
+  const isStyleTagTab = assetSubTab === 'styletag';
+  const normalPanelEl = document.getElementById('assetNormalPanel');
+  const styleTagPanelEl = document.getElementById('styleTagLibraryPanel');
+  if (normalPanelEl) normalPanelEl.style.display = isStyleTagTab ? 'none' : '';
+  if (styleTagPanelEl) styleTagPanelEl.style.display = isStyleTagTab ? '' : 'none';
+  if (isStyleTagTab) { renderStyleTagLibrary_(); return; }
   const typeFilter = assetSubTab;
   const projFilter = projFilterEl ? projFilterEl.value : '';
   const keyword = (document.getElementById('assetKeyword').value || '').toLowerCase();
